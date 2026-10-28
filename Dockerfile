@@ -1,4 +1,4 @@
-# Dockerfile — the resume_handler web app in a container.
+# Dockerfile — the resume-tailor web app in a container.
 #
 # The image needs three unusual things beyond the Python deps:
 #   1. Chromium (via Playwright) — renders the résumé HTML to PDF.

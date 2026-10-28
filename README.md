@@ -1,7 +1,37 @@
-# resume_handler
+# resume-tailor
 
-Takes your resume and a job posting, and generates a new resume tailored to that job.
-It also keeps a history of every job you found, every resume it generated, and every
+An AI job-search assistant that writes a tailored résumé for each job, and uses a
+second AI to check that nothing in it was made up.
+
+## What it does
+
+- **Tailors your résumé to a job posting.** Give it your base résumé and a job
+  posting (a link or pasted text). It first maps each requirement in the posting to
+  your real experience, then writes a version that leads with your strongest true
+  matches. You get an HTML preview and a PDF ready for applicant tracking systems.
+- **Checks the result for honesty.** One AI writes the draft, another (ChatGPT)
+  suggests ways to make it fit the job better, and a separate AI critic then checks
+  every claim against your original résumé. Anything invented, inflated, copied
+  from the posting, or written in an obvious "AI voice" is flagged and fixed
+  before the résumé is accepted.
+- **Finds jobs for you.** It scans thousands of company job boards (Greenhouse,
+  Lever, Ashby, Workday, Rippling, SmartRecruiters) and keeps only the jobs that pass
+  your rules: location, salary floor, remote or hybrid, and full-time.
+- **Ranks what it finds.** Each kept job gets a 1–10 "AI Fit" score with a one-line
+  reason, so the best matches are at the top of the list.
+- **Tracks everything.** Every job, generated résumé (with full version history), and
+  application is stored in a local database, with a web page to browse and manage it.
+
+**Built with:** Python, Flask, PostgreSQL with pgvector (for comparing text by
+meaning), Docker, Playwright (HTML to PDF), and the Claude, OpenAI, and local Ollama
+AI models. You can choose which AI runs each step.
+
+---
+
+## About this README
+
+The app takes your resume and a job posting, and generates a new resume tailored to
+that job. It also keeps a history of every job you found, every resume it generated, and every
 application you made. All of this is stored in a PostgreSQL database that runs in
 Docker on your own computer. Nothing is sent anywhere except the text sent to the AI
 models during generation.
@@ -34,8 +64,8 @@ You only do this once.
 
 ```bash
 # 1. Get the code
-git clone <this-repo>
-cd resume_handler
+git clone https://github.com/shanasok/resume-tailor.git
+cd resume-tailor
 
 # 2. Create your settings file from the template
 cp .env.example .env
