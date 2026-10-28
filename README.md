@@ -321,54 +321,65 @@ separate throwaway database (`resume_handler_test`) and never touch your real da
 
 ---
 
-## 9. How the app finds and ranks jobs (Match % and AI Fit)
+## 9. How the app finds and ranks jobs (AI Fit)
 
-When you click **Retrieve Jobs**, the app scans the job boards and decides what to
-keep in three steps:
+When you click **Retrieve Jobs**, the app walks through the company job boards it
+knows about, several boards at a time. Each board's jobs go through every step
+below as soon as that board is read, so good matches start appearing on the home
+page within the first few minutes. You don't have to wait for the whole scan to
+finish. The scan card shows a live feed of the latest jobs it kept, and the page
+reloads by itself when the scan is done. If a scan is interrupted, everything it
+already processed is kept.
+
+For each job, the app decides what to keep in four steps:
 
 1. **A wide keyword net.** A job's title only needs ONE relevant word or phrase
-   (learning, training, enablement, kubernetes, "engineering manager", "senior
-   engineer", …) to be looked at further. Generic words alone ("manager",
-   "director", "software") are not enough — "Account Manager" stays out.
+   from your keyword lists (for example "engineering manager" or "senior engineer")
+   to be looked at further. Generic words alone ("manager", "director",
+   "software") are not enough, so "Account Manager" stays out.
 2. **A meaning check for unusual titles.** Titles with none of your keywords get one
    more chance: the AI compares the title's *meaning* against the "Target roles"
-   paragraph on the Settings page, so a role like "Head of Technical Enablement"
-   still gets in even though you never listed those exact words.
-3. **Hard rules that always apply.** A job is dropped — never stored — when it is
+   paragraph on the Settings page, so a well-matched role can still get in even
+   though you never listed its exact words.
+3. **Hard rules that always apply.** A job is dropped (never stored) when it is
    not in the United States, states no salary, states a salary under your floor
-   (set on the Settings page), is on-site, or is hybrid outside the commute zone you configured in
-   Settings. Fully remote US jobs pass from anywhere. Contract, part-time, and
-   very old postings are dropped too.
-
-Everything that survives is stored, and two new columns on the home page tell you
-how good each job is **for you**:
-
-- **Match %** — how similar the job description's meaning is to your base resume.
-  Computed automatically for every stored job; the job list is sorted by it.
-- **AI Fit** — after each scan, ChatGPT reads the 25 closest-matching jobs
-  side-by-side with your resume and gives each a score out of 10 with a one-line
-  reason. Hover over the score to read the reason. This costs a few cents per scan.
+   (set on the Settings page), is on-site, or is hybrid outside the commute zone
+   you configured in Settings. Fully remote US jobs pass from anywhere. Contract,
+   part-time, and old postings are dropped too. The app remembers every job it
+   dropped here, so later scans skip it straight away.
+4. **Store and score.** A job that passes is saved together with its full
+   description, and an AI immediately gives it an **AI Fit** score out of 10 with
+   a one-line reason. Hover over the score on the home page to read the reason.
+   The job list is sorted by AI Fit, best first.
 
 Things you may want to do:
 
-- **Tune what gets through** — open **Settings** and edit the keyword lists, the
-  "Target roles" paragraph, the meaning-match threshold, or the commutable
-  locations. The scan log shows the similarity % of every title the meaning check
-  let in, which helps you pick a threshold.
-- **Score older jobs** — jobs found before this feature show "—" in both columns.
-  Click **Score fits (AI)** next to Retrieve Jobs to have ChatGPT score the best
-  unscored ones.
-- **After replacing your base resume** — old AI Fit scores are cleared
-  automatically (they were judged against the old resume) and the top matches are
-  re-scored on your next scan.
+- **Tune what gets through.** Open **Settings** and edit the keyword lists, the
+  "Target roles" paragraph, the meaning-match threshold, the salary floor, the
+  commutable locations, or how old a posting can be.
+- **Choose which AI scores the jobs.** In the "LLM selection" section of the home
+  page, the "Job scan - AI Fit verdict" picker chooses ChatGPT (the default),
+  Claude, or a local model.
+- **Score jobs that have no AI Fit yet.** Click **Score fits (AI)** next to
+  Retrieve Jobs. It scores every stored job that doesn't have a score yet, using
+  the description saved with it.
+- **Remove a job you don't want.** Click 🗑 on its row. A deleted job never comes
+  back in a later scan.
+- **After replacing your base resume.** Old AI Fit scores are cleared
+  automatically, because they were judged against the old resume. Click
+  **Score fits (AI)** to score the jobs again.
 
-All of this needs the OpenAI key (`CHATGPT_API_KEY` in `.env`) that the resume
-reviewer already uses. Without a key the scan still works on keywords alone — you
-just won't get the meaning check, Match %, or AI Fit.
+Old postings are hidden from the job list as well as from scans, based on the
+posting-age setting. Jobs you applied to or generated a resume for always stay
+visible. Nothing is deleted, so widening the age setting brings hidden jobs back.
 
-One-time note for existing installs: the database image changed from `postgres:16`
-to `pgvector/pgvector:pg16` (same database, plus the vector feature). Just run
-`docker compose up -d db` once after pulling this change — your data is untouched.
+**What it costs, and running without an OpenAI key.** By default the meaning check
+uses OpenAI to compare text (a fraction of a cent per thousand jobs) and ChatGPT
+for AI Fit (a few cents per new job; jobs that already have a score aren't scored
+again). Without an OpenAI key the scan still works on keywords alone. To keep every
+feature without paying for any AI, set `EMBEDDING_BACKEND=local` in `.env` (this
+uses a free local model through Ollama) and pick Claude or a local model in the
+AI Fit picker.
 
 ---
 
