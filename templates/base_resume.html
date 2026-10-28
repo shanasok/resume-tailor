@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Base Résumé — Resume Tailor</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #181b24; --panel-2: #1f2330; --border: #2a2f3e;
+    --text: #e6e8ee; --muted: #9aa3b2; --accent: #5b8cff; --accent-hover: #6f9bff;
+    --success-bg: #16301f; --success-fg: #6ee7a0; --success-bd: #245c3a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 24px; margin: 10px 0 4px; }
+  h2 { font-size: 17px; margin: 28px 0 10px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+  a.back { color: var(--accent); text-decoration: none; font-size: 14px; }
+  a.back:hover { text-decoration: underline; }
+  .field { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 18px; }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 4px; color: var(--muted); }
+  .help { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+  textarea, input[type=text] { width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 10px 12px; font-size: 14px; }
+  textarea { resize: vertical; min-height: 80px; font-family: ui-monospace, monospace; font-size: 13px; }
+  /* "One per line" fields: open up the leading so each entry reads as its own row
+     rather than running together. Applied only to the list-style textareas, not the
+     prose summary. */
+  textarea.lines { line-height: 2.1; }
+  textarea:focus, input:focus { outline: none; border-color: var(--accent); }
+  /* Bullets "paragraph box": a contenteditable where each bullet is its own block, so a
+     long bullet wraps with TIGHT leading while entries stay separated by a real gap — the
+     one thing a plain textarea can't do. It's not a form control, so a sibling hidden
+     <input name="exp_bullets"> carries the serialized text (see the script). */
+  .para { width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 10px 12px;
+    font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.6;
+    min-height: 80px; overflow-wrap: anywhere; }
+  .para:focus { outline: none; border-color: var(--accent); }
+  .para > div, .para > p { margin: 0 0 12px; }
+  .para > div:last-child, .para > p:last-child { margin-bottom: 0; }
+  .para:empty::before { content: "One bullet per line — press Enter for the next"; color: #5a6478; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .mb { margin-bottom: 12px; }
+  .block { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 14px; }
+  .block .grid2 input { background: var(--panel); }
+  button { background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 11px 24px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  button:hover { background: var(--accent-hover); }
+  .btn-add, .btn-import { background: transparent; color: var(--accent); border: 1px dashed var(--border);
+    padding: 9px 16px; font-size: 13px; }
+  .btn-add:hover, .btn-import:hover { background: var(--panel); }
+  .btn-remove { background: transparent; color: var(--muted); border: 1px solid var(--border);
+    padding: 5px 12px; font-size: 12px; float: right; }
+  .btn-remove:hover { color: #e77; border-color: #5c2424; }
+  .flash { padding: 11px 14px; border-radius: 8px; margin-bottom: 18px; font-size: 14px;
+    border: 1px solid var(--success-bd); background: var(--success-bg); color: var(--success-fg); }
+  .flash.error { border-color: #5c2424; background: #301616; color: #e77; }
+  .save { margin-top: 8px; }
+  /* :not([hidden]) so the hidden attribute still wins on page load (a bare display:flex
+     would override [hidden]{display:none}). */
+  .importing:not([hidden]) { display: flex; align-items: center; gap: 10px; margin-top: 12px;
+    color: var(--muted); font-size: 13px; }
+  .spinner { width: 16px; height: 16px; flex: none; border-radius: 50%;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  button[disabled] { opacity: 0.6; cursor: default; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="{{ url_for('index') }}">← Back to jobs</a>
+    <h1>Your Base Résumé</h1>
+    <p class="sub">
+      {% if has_profile %}Edit the résumé the tailoring pipeline draws from. Everything here is the
+        source of truth — keep it complete and true.{% else %}Enter your résumé once. The tailoring
+        pipeline draws from this for every job — keep it complete and true.{% endif %}
+    </p>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
+    {% endwith %}
+
+    <div class="field">
+      <label>Import from a .docx</label>
+      <p class="help">Upload a Word résumé and we'll pre-fill the fields below for you.
+        <strong>This replaces everything below</strong>, and an AI reads the file — so always
+        review the result before relying on it.</p>
+      <form id="import-form" method="POST" action="{{ url_for('base_resume_import_route') }}"
+            enctype="multipart/form-data">
+        <input type="file" name="resume_file" accept=".docx" required>
+        <input type="hidden" name="import_llm" value="claude">
+        <button id="import-btn" type="submit" class="btn-import" style="margin-top:10px;">Import &amp; pre-fill</button>
+        <div id="import-status" class="importing" hidden>
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Importing… an AI is reading your résumé. This can take up to a minute — please
+            keep this tab open.</span>
+        </div>
+      </form>
+    </div>
+
+    <form method="POST" action="{{ url_for('base_resume_route') }}">
+      <div class="field">
+        <div class="mb"><label for="name">Full name</label>
+          <input type="text" id="name" name="name" value="{{ profile.name }}"></div>
+        <div class="grid2 mb">
+          <div><label for="email">Email</label>
+            <input type="text" id="email" name="email" value="{{ profile.contact.email }}"></div>
+          <div><label for="phone">Phone</label>
+            <input type="text" id="phone" name="phone" value="{{ profile.contact.phone }}"></div>
+          <div><label for="location">Location</label>
+            <input type="text" id="location" name="location" value="{{ profile.contact.location }}"></div>
+          <div><label for="website">Website</label>
+            <input type="text" id="website" name="website" value="{{ profile.contact.website }}"></div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="summary">Professional summary</label>
+        <p class="help">A few sentences. The pipeline re-tailors this per job, but keep a solid base here.</p>
+        <textarea id="summary" name="summary">{{ profile.summary }}</textarea>
+      </div>
+
+      <div class="field">
+        <label for="competencies">Core competencies</label>
+        <p class="help">One per line — short keywords or phrases.</p>
+        <textarea id="competencies" name="competencies" class="lines">{{ profile.competencies|join('\n') }}</textarea>
+      </div>
+
+      <h2>Experience</h2>
+      <div id="experience" class="section">
+        {% for e in profile.experience %}
+        <div class="block">
+          <button type="button" class="btn-remove">Remove</button>
+          <div class="grid2 mb">
+            <div><label>Company</label><input type="text" name="exp_company" value="{{ e.company }}"></div>
+            <div><label>Title</label><input type="text" name="exp_title" value="{{ e.title }}"></div>
+            <div><label>Dates</label><input type="text" name="exp_dates" value="{{ e.dates }}"></div>
+            <div><label>Location</label><input type="text" name="exp_location" value="{{ e.location }}"></div>
+          </div>
+          <label>Bullets (one per line)</label>
+          <div class="para" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Bullets, one per line">{% for b in e.bullets %}<div>{{ b }}</div>{% endfor %}</div>
+          <input type="hidden" name="exp_bullets">
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn-add" data-target="experience" data-tpl="exp-tpl">+ Add experience</button>
+
+      <h2>Education</h2>
+      <div id="education" class="section">
+        {% for ed in profile.education %}
+        <div class="block">
+          <button type="button" class="btn-remove">Remove</button>
+          <div class="grid2 mb">
+            <div><label>Institution</label><input type="text" name="edu_institution" value="{{ ed.institution }}"></div>
+            <div><label>Degree</label><input type="text" name="edu_degree" value="{{ ed.degree }}"></div>
+            <div><label>Date</label><input type="text" name="edu_date" value="{{ ed.date }}"></div>
+            <div><label>Detail</label><input type="text" name="edu_detail" value="{{ ed.detail }}"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn-add" data-target="education" data-tpl="edu-tpl">+ Add education</button>
+
+      <h2>Skills</h2>
+      <div id="skills" class="section">
+        {% for s in profile.skills %}
+        <div class="block">
+          <button type="button" class="btn-remove">Remove</button>
+          <div class="grid2">
+            <div><label>Category</label><input type="text" name="skill_category" value="{{ s.category }}"></div>
+            <div><label>Items (comma-separated)</label><input type="text" name="skill_items" value="{{ s['items'] }}"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      <button type="button" class="btn-add" data-target="skills" data-tpl="skill-tpl">+ Add skill group</button>
+
+      <h2>Certifications</h2>
+      <div class="field">
+        <label for="certifications">Certifications</label>
+        <p class="help">One per line.</p>
+        <textarea id="certifications" name="certifications" class="lines">{{ profile.certifications|join('\n') }}</textarea>
+      </div>
+
+      <button type="submit" class="save">Save base résumé</button>
+    </form>
+  </div>
+
+  <!-- Templates cloned by the "Add" buttons (kept out of the form until added). -->
+  <template id="exp-tpl">
+    <div class="block">
+      <button type="button" class="btn-remove">Remove</button>
+      <div class="grid2 mb">
+        <div><label>Company</label><input type="text" name="exp_company"></div>
+        <div><label>Title</label><input type="text" name="exp_title"></div>
+        <div><label>Dates</label><input type="text" name="exp_dates"></div>
+        <div><label>Location</label><input type="text" name="exp_location"></div>
+      </div>
+      <label>Bullets (one per line)</label>
+      <div class="para" contenteditable="true" role="textbox" aria-multiline="true" aria-label="Bullets, one per line"></div>
+      <input type="hidden" name="exp_bullets">
+    </div>
+  </template>
+  <template id="edu-tpl">
+    <div class="block">
+      <button type="button" class="btn-remove">Remove</button>
+      <div class="grid2 mb">
+        <div><label>Institution</label><input type="text" name="edu_institution"></div>
+        <div><label>Degree</label><input type="text" name="edu_degree"></div>
+        <div><label>Date</label><input type="text" name="edu_date"></div>
+        <div><label>Detail</label><input type="text" name="edu_detail"></div>
+      </div>
+    </div>
+  </template>
+  <template id="skill-tpl">
+    <div class="block">
+      <button type="button" class="btn-remove">Remove</button>
+      <div class="grid2">
+        <div><label>Category</label><input type="text" name="skill_category"></div>
+        <div><label>Items (comma-separated)</label><input type="text" name="skill_items"></div>
+      </div>
+    </div>
+  </template>
+
+  <script>
+    // "Add" clones the named <template> into its section container.
+    document.querySelectorAll(".btn-add").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var tpl = document.getElementById(btn.dataset.tpl);
+        document.getElementById(btn.dataset.target).appendChild(tpl.content.cloneNode(true));
+      });
+    });
+    // Any "Remove" button drops its block (event delegation so it works on cloned rows too).
+    document.addEventListener("click", function (ev) {
+      if (ev.target.classList.contains("btn-remove")) ev.target.closest(".block").remove();
+    });
+    // First-time entry: start each repeatable section with one empty block so the form
+    // isn't blank. (Sections that already have saved entries are left as-is.)
+    ["experience", "education", "skills"].forEach(function (id) {
+      var section = document.getElementById(id);
+      if (!section.querySelector(".block")) {
+        var btn = document.querySelector('.btn-add[data-target="' + id + '"]');
+        btn.click();
+      }
+    });
+
+    // Import runs a slow LLM call as a plain POST (the page navigates when it's done). Show
+    // a working state so the wait isn't silent, and block a double-submit. We do NOT
+    // preventDefault — the native submit proceeds and the message stays until the redirect.
+    (function () {
+      var form = document.getElementById("import-form");
+      var btn = document.getElementById("import-btn");
+      var status = document.getElementById("import-status");
+      var submitting = false;
+      form.addEventListener("submit", function (ev) {
+        if (submitting) { ev.preventDefault(); return; }   // ignore repeat clicks
+        submitting = true;
+        btn.disabled = true;
+        btn.textContent = "Importing…";
+        status.hidden = false;
+      });
+    })();
+
+    // The import LLM is chosen on the home page ("LLM selection"); pick up the saved
+    // choice so the POST carries it. Defaults to claude when never set.
+    (function () {
+      var el = document.querySelector('#import-form input[name="import_llm"]');
+      if (el) el.value = localStorage.getItem('resumeLlmImport') || 'claude';
+    })();
+
+    // Bullets are edited in a contenteditable "paragraph box" so each bullet reads as its
+    // own block. A contenteditable doesn't submit, so mirror its text into the sibling
+    // hidden <input name="exp_bullets"> that does. innerText gives one line per block with
+    // soft-wraps collapsed — exactly the "one per line" shape the server expects.
+    function syncBullets(para) {
+      var block = para.closest(".block");
+      var hidden = block && block.querySelector('input[name="exp_bullets"]');
+      if (hidden) hidden.value = para.innerText;
+    }
+    document.querySelectorAll(".para").forEach(syncBullets);      // initial (incl. cloned empty blocks)
+    // Keep it current as the user types (the input event bubbles from contenteditable).
+    document.addEventListener("input", function (ev) {
+      if (ev.target.classList && ev.target.classList.contains("para")) syncBullets(ev.target);
+    });
+    // Paste as PLAIN text so Word/Docs styling can't leak markup into a bullet.
+    document.addEventListener("paste", function (ev) {
+      var para = ev.target.closest && ev.target.closest(".para");
+      if (!para) return;
+      ev.preventDefault();
+      var text = (ev.clipboardData || window.clipboardData).getData("text/plain");
+      document.execCommand("insertText", false, text);
+    });
+    // Safety net: serialize every box just before the résumé form submits — covers blocks
+    // added via "+ Add experience" and any input event that didn't fire.
+    var resumeForm = document.querySelector(".save") && document.querySelector(".save").closest("form");
+    if (resumeForm) resumeForm.addEventListener("submit", function () {
+      resumeForm.querySelectorAll(".para").forEach(syncBullets);
+    });
+  </script>
+</body>
+</html>

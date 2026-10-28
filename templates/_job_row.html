@@ -1,0 +1,126 @@
+{# ONE jobs-table row. Used two ways:
+     1. index.html includes it inside its {% for app in applications %} loop.
+     2. GET /job-row/<job_id> renders it alone, so the live scan feed can insert
+        newly-found jobs into the table WITHOUT a page reload (the page JS wires up
+        the row's buttons after inserting — see wireRow() in index.html).
+   Keep this file's markup in lockstep with the JS that binds row behavior. #}
+{% set is_applied = app.Status == 'Applied' %}
+{% set has_resume = app.HTML|length > 0 %}
+{#- data-has-resume tells a delete which summary tile to decrement; data-job-id keys the
+    row. The tab / AI-Fit / date / company attributes that used to live here are gone with
+    the in-browser filtering and sorting they fed — the server does both in SQL now. -#}
+<tr class="{{ 'is-applied' if is_applied else '' }}" data-has-resume="{{ 1 if has_resume else 0 }}" data-job-id="{{ app['Job ID'] }}">
+  <td class="select-cell">
+    {% if not is_applied and not has_resume %}
+      <input type="checkbox" class="row-select" data-job-id="{{ app['Job ID'] }}"
+             data-company="{{ app.Company }}" data-role="{{ app.Role }}"
+             title="Select for scheduled generation">
+    {% endif %}
+  </td>
+  {# AI Fit — the one score column. The reason shows in a styled hover tooltip on the
+     WHOLE cell (data-tip + CSS), not a native title: those are easy to miss. #}
+  <td class="aifit-cell"{% if app['AI Fit Reason'] %} data-tip="{{ app['AI Fit Reason'] }}"{% endif %}>
+    {% if app['AI Fit Score'] is not none %}<span class="match-score">{{ app['AI Fit Score'] }}<span class="match-of">/10</span></span>{% else %}<span class="muted" data-tip-muted title="Not AI-scored yet — use the Score fits button, or it happens automatically for every new job after each scan">—</span>{% endif %}
+  </td>
+  <td><span class="source source-{{ app.Source }}">{{ app.Source }}</span></td>
+  <td>{{ app['Date Matched'] }}</td>
+  <td>{{ app['Date Posted'] or '—' }}</td>
+  <td>{{ app.Company }}
+      {% if app.Connections %}
+      <div class="rowconns"><span class="conns-label">🤝 Connections:</span>
+        {% for c in app.Connections %}<a href="{{ c.url }}" target="_blank" rel="noopener"
+           title="{{ c.position }}">{{ c.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}
+      </div>
+      {% endif %}</td>
+  <td>{{ app.Role }}{% if app.Flags %}<div class="rowflag" title="{{ app.Flags|join('; ') }}">⚑ {{ app.Flags|join('; ') }}</div>{% endif %}
+      {% if app.Salary %}<div class="rowsalary">{{ app.Salary }}</div>{% endif %}</td>
+  <td class="loc">{{ app.Location or '—' }}</td>
+  <td class="joburl">
+    {% if app['Job URL'].startswith('http') %}
+      <a href="{{ app['Job URL'] }}" target="_blank" title="{{ app['Job URL'] }}">View ↗</a>
+    {% else %}
+      {{ app['Job URL'] or '—' }}
+    {% endif %}
+  </td>
+  <td class="status-cell">
+    <div class="progress">
+      <span class="step on" data-step="found">✓ Found</span>
+      <span class="step{{ ' on' if has_resume else '' }}" data-step="generated">{{ '✓ ' if has_resume else '' }}Generated</span>
+      <span class="step{{ ' on' if is_applied else '' }}" data-step="applied">{{ '✓ ' if is_applied else '' }}Applied</span>
+    </div>
+  </td>
+  <td class="action-cell delete-cell">
+    {% if not is_applied %}
+      <button class="delete-btn" data-job-id="{{ app['Job ID'] }}" title="Delete this job and its generated resume" aria-label="Delete this job and its generated resume">🗑</button>
+    {% endif %}
+  </td>
+  <td class="action-cell action-group-start resume-cell">
+    {% if has_resume %}
+      <div class="resume-links">
+        <a href="{{ url_for('files', filename=app.HTMLrel) }}" target="_blank">HTML</a>
+        <a href="{{ url_for('files', filename=app.PDFrel) }}?download=1">PDF ↓</a>
+      </div>
+      <div class="resume-actions">
+        <form method="POST" action="{{ url_for('regenerate_resume_route') }}" class="regen-form">
+          <input type="hidden" name="company" value="{{ app.Company }}">
+          <input type="hidden" name="role" value="{{ app.Role }}">
+          <input type="hidden" name="job_id" value="{{ app['Job ID'] }}">
+          <button type="submit" class="apply-btn regen-btn" title="Re-render the PDF from the saved JSON and re-score — no AI rewrite">↻ From JSON</button>
+        </form>
+        <form method="POST" action="{{ url_for('rewrite_resume_route') }}" class="rewrite-form">
+          <input type="hidden" name="company" value="{{ app.Company }}">
+          <input type="hidden" name="role" value="{{ app.Role }}">
+          <input type="hidden" name="job_id" value="{{ app['Job ID'] }}">
+          <button type="submit" class="apply-btn rewrite-btn" title="Full AI rewrite using the LLMs chosen at the top of the page (uses credits)">✎ With LLM</button>
+        </form>
+        <button type="button" class="apply-btn versions-btn" data-job-id="{{ app['Job ID'] }}"
+                data-company="{{ app.Company }}" data-role="{{ app.Role }}"
+                title="See and restore previous versions of this résumé">🕑 History</button>
+        <a class="apply-btn"
+           href="{{ url_for('resume_diff_route', company=app.Company, role=app.Role) }}" target="_blank"
+           title="Compare this tailored résumé against your base résumé, side by side">⇄ Compare</a>
+      </div>
+    {% else %}
+      <form method="POST" action="{{ url_for('generate_for_job_route') }}" class="genjob-form" style="margin:0;">
+        <input type="hidden" name="job_id" value="{{ app['Job ID'] }}">
+        <button type="submit" class="apply-btn genjob-btn" title="Tailor a resume for this job (uses AI credits)">Generate Resume</button>
+      </form>
+    {% endif %}
+  </td>
+  {# Match — the critic's score on the GENERATED resume. Its full report (truthfulness
+     problems, AI-style tells, suggested fixes, strengths) shows in the same hover
+     tooltip the AI Fit cell uses; newlines separate the sections (CSS pre-line). #}
+  {% set tip = critic_findings_tooltip(app['Critic Findings']) %}
+  <td class="action-cell match-cell">
+    {% if app['Match Score'] %}<span class="match-wrap"><span class="match-score">{{ app['Match Score'] }}<span class="match-of">/10</span></span>{% if tip %}<span class="match-tip" role="tooltip">{{ tip }}</span>{% endif %}</span>{% else %}<span class="muted">—</span>{% endif %}
+  </td>
+  <td class="action-cell chat-cell">
+    {% if has_resume %}
+      <button class="apply-btn chat-btn" data-job-id="{{ app['Job ID'] }}" data-company="{{ app.Company }}" data-role="{{ app.Role }}" title="Suggestions to improve this resume's match">💬 Chat</button>
+    {% else %}
+      <span class="muted">—</span>
+    {% endif %}
+  </td>
+  <td class="action-cell email-cell">
+    {% if has_resume %}
+    <form method="POST" action="{{ url_for('update_email_route') }}" class="email-form">
+      <input type="hidden" name="company" value="{{ app.Company }}">
+      <input type="hidden" name="role" value="{{ app.Role }}">
+      <input type="email" name="email" class="email-input" placeholder="you@example.com" required>
+      <button type="submit" class="apply-btn" title="Rewrite this resume's email (no AI used)">Set</button>
+    </form>
+    {% else %}
+      <span class="muted">—</span>
+    {% endif %}
+  </td>
+  <td class="action-cell">
+    {% if is_applied %}
+      <span class="applied-date"><span class="check">✓</span>{{ app['Applied Date'] }}</span>
+    {% else %}
+      <form method="POST" action="{{ url_for('applied_route') }}" style="margin:0;">
+        <input type="hidden" name="key" value="{{ app['Job ID'] }}">
+        <button type="submit" class="apply-btn">Applied manually</button>
+      </form>
+    {% endif %}
+  </td>
+</tr>

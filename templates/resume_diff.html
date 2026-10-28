@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Compare résumé — {{ company }} · {{ role }}</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #181b24; --panel-2: #1f2330; --border: #2a2f3e;
+    --text: #e6e8ee; --muted: #9aa3b2; --accent: #5b8cff; --accent-hover: #6f9bff;
+    /* diff colours — muted so a page of them stays readable */
+    --add-bg: #12261a; --add-bd: #2c6b45; --add-fg: #7ee2a8;
+    --del-bg: #2a1618; --del-bd: #7a3138; --del-fg: #f4a3aa;
+    --chg-bg: #2a2410; --chg-bd: #7a6522; --chg-fg: #f0d585;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 32px 24px 80px; }
+  a.back { color: var(--accent); text-decoration: none; font-size: 14px; }
+  a.back:hover { text-decoration: underline; }
+  h1 { font-size: 22px; margin: 8px 0 2px; }
+  .sub { color: var(--muted); margin: 0 0 18px; font-size: 14px; }
+
+  /* legend / counts */
+  .legend { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 22px; font-size: 13px; }
+  .chip { padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); }
+  .chip.add { background: var(--add-bg); border-color: var(--add-bd); color: var(--add-fg); }
+  .chip.del { background: var(--del-bg); border-color: var(--del-bd); color: var(--del-fg); }
+  .chip.chg { background: var(--chg-bg); border-color: var(--chg-bd); color: var(--chg-fg); }
+  .chip.same { color: var(--muted); }
+
+  section.sec { margin-bottom: 30px; }
+  h2 { font-size: 15px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+    margin: 0 0 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+
+  /* the two-column grid */
+  .cols-head { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 8px; }
+  .cols-head div { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 8px; align-items: stretch; }
+  .cell { padding: 8px 11px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--panel); font-size: 14px; white-space: pre-wrap; word-break: break-word; }
+  .cell.empty { background: transparent; border-style: dashed; border-color: var(--border); }
+  .cell.same { color: var(--text); }
+  .cell.add { background: var(--add-bg); border-color: var(--add-bd); }
+  .cell.del { background: var(--del-bg); border-color: var(--del-bd); }
+  .cell.chg { background: var(--chg-bg); border-color: var(--chg-bd); }
+  /* word-level highlights inside a changed cell */
+  .wd-del { background: rgba(122,49,56,.55); color: var(--del-fg); border-radius: 3px;
+    padding: 0 1px; text-decoration: line-through; text-decoration-color: rgba(244,163,170,.6); }
+  .wd-ins { background: rgba(44,107,69,.55); color: var(--add-fg); border-radius: 3px; padding: 0 1px; }
+
+  /* experience role blocks */
+  .role { margin-bottom: 26px; }
+  .role-head { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 8px; }
+  .role-head .cell { font-weight: 600; }
+  /* each bullet reads as its own line item: a • marker + hanging indent + breathing room */
+  .role .row { margin-bottom: 11px; }
+  .role .row .cell:not(.empty) { padding-left: 24px; text-indent: -13px; }
+  .role .row .cell:not(.empty)::before { content: "•"; color: var(--muted); margin-right: 8px; }
+
+  .note { color: var(--muted); font-size: 13px; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 22px; }
+  .missing { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 24px; color: var(--muted); }
+
+  /* ── toolbar: Review ↔ Edit toggle + Save ─────────────────────────────── */
+  .toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 4px 0 20px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { background: var(--panel); color: var(--text); border: 0; padding: 7px 14px;
+    font-size: 13px; cursor: pointer; }
+  .seg button + button { border-left: 1px solid var(--border); }
+  .seg button.active { background: var(--accent); color: #fff; }
+  .btn { background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 14px; font-size: 13px; cursor: pointer; }
+  .btn:hover { border-color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: var(--accent-hover); }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .save-status { font-size: 13px; color: var(--muted); }
+  .save-status.ok { color: var(--add-fg); }
+  .save-status.err { color: var(--del-fg); }
+
+  /* ── edit view — same two-column grid/cells/colours as the diff, but the RIGHT
+     column is editable. An .edit-cell is styled exactly like a .cell (same padding,
+     radius, background, font) so nothing shifts; only its border turns accent-blue to
+     signal "you can type here". ─────────────────────────────────────────────────── */
+  .cols-head.edit div:last-child { color: var(--accent); }
+  .edit-cell { width: 100%; display: block; background: var(--panel); color: var(--text);
+    border: 1px solid var(--accent); border-radius: 7px; padding: 8px 11px;
+    font: inherit; font-size: 14px; line-height: 1.5; }
+  .edit-cell:focus { outline: none; border-color: var(--accent-hover);
+    box-shadow: 0 0 0 2px rgba(91,140,255,.25); }
+  textarea.edit-cell { resize: vertical; white-space: pre-wrap; word-break: break-word; }
+  .role-head .edit-cell { font-weight: 600; }
+  .edit-hint { font-size: 13px; color: var(--muted); background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 18px; }
+  /* keep both columns top-aligned so an editable cell lines up with its base counterpart */
+  #edit-view .row { align-items: start; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="{{ url_for('index') }}">← Back to applications</a>
+  <h1>Compare résumé</h1>
+  <p class="sub">Base résumé (left) vs the tailored résumé for <strong>{{ company }} · {{ role }}</strong> (right).</p>
+
+  {% if diff is none %}
+    <div class="missing">
+      {% if missing_base %}<p>You don't have a base résumé yet — <a class="back" href="{{ url_for('base_resume_route') }}">add one</a> to compare against.</p>{% endif %}
+      {% if missing_gen %}<p>No generated résumé is cached for this job yet. Generate one first, then come back to compare.</p>{% endif %}
+    </div>
+  {% else %}
+    <div class="toolbar">
+      <div class="seg">
+        <button id="btn-review" class="active" type="button">Review changes</button>
+        <button id="btn-edit" type="button">✎ Edit tailored résumé</button>
+      </div>
+      <button id="btn-save" class="btn primary" type="button" style="display:none;">Save changes</button>
+      <button id="btn-cancel" class="btn" type="button" style="display:none;">Cancel</button>
+      <span id="save-status" class="save-status"></span>
+    </div>
+
+    <!-- ── Review (diff) view ─────────────────────────────────────────────── -->
+    <div id="diff-view">
+    <div class="legend">
+      <span class="chip add">＋ {{ diff.counts.added }} added</span>
+      <span class="chip del">－ {{ diff.counts.removed }} removed</span>
+      <span class="chip chg">~ {{ diff.counts.changed }} changed</span>
+      <span class="chip same">{{ diff.counts.same }} unchanged</span>
+    </div>
+
+    <div class="note">
+      Reworded bullets are paired and highlighted word-by-word: <span class="wd-del">struck-through
+      red</span> is text the tailored résumé dropped, <span class="wd-ins">green</span> is text it
+      added. Whole added or removed items are shown in the right or left column alone; matched,
+      identical items are marked unchanged. To change the tailored résumé, click
+      <strong>✎ Edit tailored résumé</strong> above.
+    </div>
+
+    {% macro cell(status, side, html) %}
+      {% if status == 'same' %}<div class="cell same">{{ html|safe }}</div>
+      {% elif status == 'changed' %}<div class="cell chg">{{ html|safe }}</div>
+      {% elif status == 'added' %}
+        {% if side == 'left' %}<div class="cell empty"></div>{% else %}<div class="cell add">{{ html|safe }}</div>{% endif %}
+      {% elif status == 'removed' %}
+        {% if side == 'left' %}<div class="cell del">{{ html|safe }}</div>{% else %}<div class="cell empty"></div>{% endif %}
+      {% endif %}
+    {% endmacro %}
+
+    {% for sec in diff.sections %}
+      {% if sec.kind == 'experience' %}
+        {% if sec.roles %}
+        <section class="sec">
+          <h2>{{ sec.title }}</h2>
+          {% for block in sec.roles %}
+            <div class="role">
+              <div class="role-head">
+                {{ cell(block.status if block.status != 'changed' else 'same', 'left', block.left_header|e) }}
+                {{ cell(block.status if block.status != 'changed' else 'same', 'right', block.right_header|e) }}
+              </div>
+              {% for r in block.rows %}
+                <div class="row">
+                  {{ cell(r.status, 'left', r.left_html) }}
+                  {{ cell(r.status, 'right', r.right_html) }}
+                </div>
+              {% endfor %}
+            </div>
+          {% endfor %}
+        </section>
+        {% endif %}
+      {% else %}
+        {% if sec.rows %}
+        <section class="sec">
+          <h2>{{ sec.title }}</h2>
+          {% for r in sec.rows %}
+            <div class="row">
+              {{ cell(r.status, 'left', r.left_html) }}
+              {{ cell(r.status, 'right', r.right_html) }}
+            </div>
+          {% endfor %}
+        </section>
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    </div><!-- /#diff-view -->
+
+    <!-- ── Edit view (built by JS — same layout as the diff, right column editable) ── -->
+    <div id="edit-view" style="display:none;">
+      <div class="edit-hint">
+        The <strong>right column</strong> (blue outline) is now editable — the base résumé on the
+        left stays read-only for reference. Each blank line at the bottom of a list lets you add an
+        item; clear a field to remove it. Saving re-renders the HTML + PDF and keeps a copy of the
+        current version in History first. The Match score isn't recomputed — use “↻ From JSON” on
+        the home page afterward if you want a fresh score.
+      </div>
+      <div class="cols-head edit"><div>Base résumé</div><div>Tailored résumé — editable</div></div>
+      <div id="edit-sections"></div>
+    </div>
+
+    <script>
+      var BASE = {{ base_data|tojson }};
+      var GEN  = {{ gen_data|tojson }};
+      var META = { company: {{ company|tojson }}, role: {{ role|tojson }}, jobId: {{ job_id|tojson }} };
+
+      // ── small DOM helpers ─────────────────────────────────────────────────
+      function ce(tag, cls) { var e = document.createElement(tag); if (cls) e.className = cls; return e; }
+      function roCell(text) {                                   // read-only base reference cell (looks like a diff cell)
+        var d = ce('div', text ? 'cell same' : 'cell empty');
+        d.textContent = text || ''; return d;
+      }
+      // An editable cell that looks exactly like a diff cell but the user can type in it.
+      // `line` = true → single-line <input> (short labels); else an auto-sized <textarea>.
+      function autoGrow(ta) { ta.style.height = 'auto'; ta.style.height = (ta.scrollHeight + 2) + 'px'; }
+      function editCell(value, line) {
+        var el;
+        if (line) { el = ce('input', 'edit-cell'); el.type = 'text'; }
+        else {
+          el = ce('textarea', 'edit-cell'); el.rows = 2;
+          el.addEventListener('input', function () { autoGrow(el); });   // grow as the user types
+        }
+        el.value = (value == null) ? '' : String(value);
+        return el;
+      }
+      function section(title) { var s = ce('section', 'sec'); var h = ce('h2'); h.textContent = title; s.appendChild(h); return s; }
+      function rowEl(left, right) { var r = ce('div', 'row'); r.appendChild(left); r.appendChild(right); return r; }
+      function roleText(r) {
+        var head = [r.title, r.company].filter(Boolean).join(' · ');
+        return r.dates ? head + '  (' + r.dates + ')' : head;
+      }
+      function renderSkill(s) { return s ? ((s.category ? s.category + ': ' : '') + (s.items || '')) : ''; }
+      function parseSkill(text) {
+        var t = String(text || '').trim(), i = t.indexOf(': ');
+        return (i === -1) ? { category: '', items: t } : { category: t.slice(0, i).trim(), items: t.slice(i + 2).trim() };
+      }
+      function renderEdu(e) { return e ? [e.degree, e.institution, e.date, e.detail].filter(Boolean).join(' — ') : ''; }
+      function parseEdu(text) {
+        var p = String(text || '').split(' — ').map(function (x) { return x.trim(); });
+        return { degree: p[0] || '', institution: p[1] || '', date: p[2] || '', detail: p[3] || '' };
+      }
+
+      // Refs to every editable cell, so we can read the tailored résumé back on save.
+      var refs = { summary: null, competencies: [], certifications: [], experience: [], skills: [], education: [] };
+
+      // Render one section as diff-style rows: base list (left, read-only) beside an editable
+      // list (right). Includes one trailing blank row so the user can add an item.
+      function listSection(host, title, baseArr, genArr, renderFn, line, refBucket) {
+        var sec = section(title);
+        var b = baseArr || [], g = genArr || [];
+        var n = Math.max(b.length, g.length);
+        for (var i = 0; i < n; i++) {
+          var cell = editCell(g[i] != null ? renderFn(g[i]) : '', line);
+          refBucket.push(cell);
+          sec.appendChild(rowEl(roCell(b[i] != null ? renderFn(b[i]) : ''), cell));
+        }
+        var add = editCell('', line); refBucket.push(add);       // trailing blank = "add another"
+        sec.appendChild(rowEl(roCell(''), add));
+        host.appendChild(sec);
+      }
+      var ident = function (x) { return x; };                     // renderFn for plain-string lists
+
+      function buildEditor() {
+        var host = document.getElementById('edit-sections');
+        host.innerHTML = '';
+
+        // Professional Summary — one row, editable textarea on the right
+        var sec = section('Professional Summary');
+        var sum = editCell(GEN.summary);
+        sum.rows = Math.max(3, String(GEN.summary || '').split('\n').length);
+        refs.summary = sum;
+        sec.appendChild(rowEl(roCell(BASE.summary), sum));
+        host.appendChild(sec);
+
+        // Core Competencies — one editable row per item (matches the diff's per-item rows)
+        listSection(host, 'Core Competencies', BASE.competencies, GEN.competencies, ident, true, refs.competencies);
+
+        // Experience — role blocks like the diff; company/title/dates are read-only (they mirror
+        // the base résumé — tailoring never invents jobs), only the bullets are editable.
+        sec = section('Experience');
+        var bexp = BASE.experience || [], gexp = GEN.experience || [];
+        var rn = Math.max(bexp.length, gexp.length);
+        for (var ri = 0; ri < rn; ri++) {
+          var br = bexp[ri], gr = gexp[ri];
+          var roleDiv = ce('div', 'role');
+          var head = ce('div', 'role-head');
+          head.appendChild(roCell(br ? roleText(br) : ''));
+          head.appendChild(roCell(gr ? roleText(gr) : ''));      // gen header read-only
+          roleDiv.appendChild(head);
+          var bb = (br && br.bullets) || [], gb = (gr && gr.bullets) || [];
+          var cells = [];
+          if (gr) {                                              // only a real tailored role gets editable bullets
+            var bn = Math.max(bb.length, gb.length);
+            for (var bi = 0; bi < bn; bi++) {
+              var bc = editCell(gb[bi] || '');
+              cells.push(bc);
+              roleDiv.appendChild(rowEl(roCell(bb[bi] || ''), bc));
+            }
+            var addB = editCell(''); cells.push(addB);           // trailing blank bullet = "add another"
+            roleDiv.appendChild(rowEl(roCell(''), addB));
+          }
+          sec.appendChild(roleDiv);
+          refs.experience.push({ role: gr || null, bulletCells: cells });
+        }
+        host.appendChild(sec);
+
+        // Skills / Education — one editable row per entry, in the diff's rendered-string form
+        if ((BASE.skills || []).length || (GEN.skills || []).length)
+          listSection(host, 'Skills', BASE.skills, GEN.skills, renderSkill, true, refs.skills);
+        if ((BASE.education || []).length || (GEN.education || []).length)
+          listSection(host, 'Education', BASE.education, GEN.education, renderEdu, true, refs.education);
+
+        // Certifications — one editable row per item
+        listSection(host, 'Certifications', BASE.certifications, GEN.certifications, ident, false, refs.certifications);
+      }
+
+      // Read the editable (right) side back into the résumé JSON shape. Starts from a copy of GEN
+      // so anything we don't render (name, contact, …) is preserved untouched.
+      function collect() {
+        var data = JSON.parse(JSON.stringify(GEN));
+        var vals = function (bucket) { return bucket.map(function (c) { return c.value.trim(); }).filter(Boolean); };
+        data.summary = refs.summary.value.trim();
+        data.competencies = vals(refs.competencies);
+        data.certifications = vals(refs.certifications);
+        data.skills = refs.skills.map(function (c) { return parseSkill(c.value); })
+          .filter(function (s) { return s.items || s.category; });
+        data.education = refs.education.map(function (c) { return parseEdu(c.value); })
+          .filter(function (e) { return e.degree || e.institution || e.date || e.detail; });
+        data.experience = refs.experience.filter(function (x) { return x.role; }).map(function (x) {
+          return { company: (x.role.company || ''), title: (x.role.title || ''), dates: (x.role.dates || ''),
+                   bullets: x.bulletCells.map(function (c) { return c.value.trim(); }).filter(Boolean) };
+        });
+        return data;
+      }
+
+      // ── mode toggle ───────────────────────────────────────────────────────
+      var btnReview = document.getElementById('btn-review'),
+          btnEdit = document.getElementById('btn-edit'),
+          btnSave = document.getElementById('btn-save'),
+          btnCancel = document.getElementById('btn-cancel'),
+          statusEl = document.getElementById('save-status'),
+          diffView = document.getElementById('diff-view'),
+          editView = document.getElementById('edit-view'),
+          built = false;
+      function setStatus(msg, kind) { statusEl.textContent = msg || ''; statusEl.className = 'save-status' + (kind ? ' ' + kind : ''); }
+      function showReview() {
+        btnReview.classList.add('active'); btnEdit.classList.remove('active');
+        diffView.style.display = ''; editView.style.display = 'none';
+        btnSave.style.display = 'none'; btnCancel.style.display = 'none';
+      }
+      function showEdit() {
+        if (!built) { buildEditor(); built = true; }
+        btnEdit.classList.add('active'); btnReview.classList.remove('active');
+        diffView.style.display = 'none'; editView.style.display = '';
+        btnSave.style.display = ''; btnCancel.style.display = '';
+        setStatus('');
+        // Size every textarea to its content now that the view is visible (scrollHeight needs it shown).
+        editView.querySelectorAll('textarea.edit-cell').forEach(autoGrow);
+      }
+      btnReview.addEventListener('click', showReview);
+      btnEdit.addEventListener('click', showEdit);
+      btnCancel.addEventListener('click', showReview);
+
+      // ── save ──────────────────────────────────────────────────────────────
+      btnSave.addEventListener('click', function () {
+        var data = collect();
+        if (!data.name || !data.experience.length) {
+          setStatus('The résumé needs a name and at least one experience entry.', 'err'); return;
+        }
+        btnSave.disabled = true; btnCancel.disabled = true; setStatus('Saving…');
+        fetch('/save-resume-json', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ company: META.company, role: META.role, job_id: META.jobId, data: data }) })
+          .then(function (r) { return r.json(); })
+          .then(function (resp) {
+            if (!resp.ok) {
+              btnSave.disabled = false; btnCancel.disabled = false;
+              setStatus(resp.message || 'Could not save your edits.', 'err'); return;
+            }
+            // Stash a message, then reload so the diff recomputes against the edited résumé.
+            try { sessionStorage.setItem('compareSaved', resp.message || 'Saved.'); } catch (e) {}
+            location.reload();
+          })
+          .catch(function () {
+            btnSave.disabled = false; btnCancel.disabled = false;
+            setStatus('Could not save your edits.', 'err');
+          });
+      });
+
+      // Show the "saved" confirmation after the post-save reload.
+      (function () {
+        try {
+          var m = sessionStorage.getItem('compareSaved');
+          if (m) { sessionStorage.removeItem('compareSaved'); setStatus('✓ ' + m, 'ok'); }
+        } catch (e) {}
+      })();
+    </script>
+  {% endif %}
+</div>
+</body>
+</html>

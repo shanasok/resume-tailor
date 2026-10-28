@@ -1,0 +1,37 @@
+# Resumes (personal data — never commit)
+resumes/
+data/Connections.csv
+
+# Personal filter tuning (defaults live in code; the app recreates this on save)
+data/filter_config.json
+
+# Personal scheduled-run state (overwritten by each batch run)
+data/scheduled_runs.json
+
+# Generation audit log (personal job-search activity — runtime artifact)
+logs/
+
+# The PostgreSQL data directory (bind-mounted into the db container) and DB dumps —
+# personal data, never committed
+postgres_data/
+backups/
+
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+
+# macOS
+.DS_Store
+# Owner filter snapshot for the one-time v8 per-user migration (machine-local, never committed)
+data/user1_filter_seed.json

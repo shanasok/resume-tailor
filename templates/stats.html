@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Generation Stats — Resume Tailor</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #181b24; --panel-2: #1f2330; --border: #2a2f3e;
+    --text: #e6e8ee; --muted: #9aa3b2; --accent: #5b8cff; --accent-hover: #6f9bff;
+    --success-bg: #16301f; --success-fg: #6ee7a0; --success-bd: #245c3a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.5; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 24px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+  a.back { color: var(--accent); text-decoration: none; font-size: 14px; }
+  a.back:hover { text-decoration: underline; }
+
+  /* Summary banner (reused from the main page styling) */
+  .summary { display: flex; gap: 22px; margin-bottom: 22px; flex-wrap: wrap; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px; min-width: 110px; }
+  .stat .n { font-size: 22px; font-weight: 700; }
+  .stat .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  tr:last-child td { border-bottom: none; }
+  /* Keep Company/Role compact (wrap long names) so the per-stage LLM column has room. */
+  th:nth-child(1), td:nth-child(1),
+  th:nth-child(2), td:nth-child(2) { max-width: 120px; overflow-wrap: break-word; word-break: break-word; }
+  .llm-badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .llm-claude { background: #1d2a40; color: #8fb6ff; border: 1px solid #2f4a72; }
+  .llm-local { background: #16301f; color: #6ee7a0; border: 1px solid #245c3a; }
+  .llm-chatgpt { background: #10302b; color: #74e6c8; border: 1px solid #1f5a4f; }
+  .llm-none { color: var(--muted); }
+  /* Widen the stage column and keep each "stage name + badge" pair on a single line. */
+  .stage-cell { width: 300px; white-space: nowrap; }
+  .stage-line { display: flex; align-items: center; gap: 8px; margin: 3px 0; flex-wrap: nowrap; }
+  .stage-name { color: var(--muted); font-size: 11px; min-width: 118px; }
+  .gen-time { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .muted { color: var(--muted); }
+  .match-score { font-weight: 800; color: var(--accent); }
+  .empty { color: var(--muted); font-size: 14px; padding: 18px 0; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="{{ url_for('index') }}">← Back to jobs</a>
+    <h1 style="margin-top:10px;">Generation Stats</h1>
+    <p class="sub">How long each resume took to generate and which LLM ran each stage of the
+      process. Timing and per-stage models are recorded the moment a resume is generated;
+      resumes made before a field was tracked show “—”.</p>
+
+    {% if rows %}
+    <div class="summary">
+      <div class="stat"><div class="n">{{ summary.total }}</div><div class="l">Resumes Made</div></div>
+      <div class="stat"><div class="n">{{ summary.claude }}</div><div class="l">Made by Claude</div></div>
+      <div class="stat"><div class="n">{{ summary.local }}</div><div class="l">Made by Local</div></div>
+      <div class="stat"><div class="n">{{ summary.chatgpt }}</div><div class="l">Made by ChatGPT</div></div>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>Company</th><th>Role</th><th>LLM by Stage</th><th>Generation Time</th>
+          <th>Match</th><th>Date</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td>{{ r.Company }}</td>
+          <td>{{ r.Role }}</td>
+          <td class="stage-cell">
+            {% for st in r.StageBadges %}
+            <div class="stage-line">
+              <span class="stage-name">{{ st.stage }}</span>
+              {% if st.css == 'llm-none' %}<span class="llm-none">{{ st.display }}</span>
+              {% else %}<span class="llm-badge {{ st.css }}">{{ st.display }}</span>{% endif %}
+            </div>
+            {% endfor %}
+          </td>
+          <td class="gen-time">{{ r.GenTimeDisplay }}</td>
+          <td>{% if r['Match Score'] %}<span class="match-score">{{ r['Match Score'] }}<span class="muted">/10</span></span>{% else %}<span class="muted">—</span>{% endif %}</td>
+          <td class="muted">{{ r['Date Matched'] or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No resumes generated yet. Generate one from the
+      <a href="{{ url_for('index') }}" style="color:var(--accent);">main page</a> and its
+      timing + LLM will show up here.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

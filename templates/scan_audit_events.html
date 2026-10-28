@@ -1,0 +1,236 @@
+{%- set ns = namespace(has_track=False) -%}
+{%- for scan in scans -%}{%- for job in scan['jobs'] -%}{%- if not job['stored'] and not job['manually_added'] and job['external_id'] -%}{%- set ns.has_track = True -%}{%- endif -%}{%- endfor -%}{%- endfor -%}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Scan Audit — Events</title>
+  <style>
+    :root { --bg:#0f1117; --panel:#181b24; --panel-2:#1f2330; --border:#2a2f3e;
+      --text:#e6e8ee; --muted:#9aa3b2; --accent:#5b8cff; --accent-hover:#6f9bff;
+      --adv:#6ee7a0; --drop:#ff9aa3;
+      --adv-bg:#16301f; --adv-bd:#245c3a; --drop-bg:#34161a; --drop-bd:#6b2630; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; line-height:1.5; }
+    .wrap { max-width:1080px; margin:0 auto; padding:36px 30px 90px; }
+    h1 { font-size:24px; margin:0 0 4px; }
+    .sub { color:var(--muted); margin:0 0 18px; font-size:14px; }
+    a.back { color:var(--accent); text-decoration:none; font-size:14px; }
+    a.back:hover { color:var(--accent-hover); }
+    .mono { font-variant-numeric:tabular-nums;
+      font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; }
+
+    form.filters { display:flex; flex-wrap:wrap; gap:10px; align-items:end; margin:14px 0 6px; }
+    label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+    select, input[type=text] { background:var(--panel-2); border:1px solid var(--border);
+      color:var(--text); border-radius:8px; padding:7px 10px; font-size:13px; }
+    button.filter-btn { background:var(--accent); border:none; color:#fff; border-radius:8px;
+      padding:8px 16px; font-size:13px; cursor:pointer; }
+
+    .toolbar { display:flex; justify-content:flex-end; margin:8px 0 12px; }
+    .bulk { background:none; border:1px solid var(--border); color:var(--accent); cursor:pointer;
+      border-radius:7px; padding:5px 11px; font-size:12.5px; }
+    .bulk:hover { border-color:var(--accent); }
+
+    .scan-group { margin:18px 0 0; }
+    .scan-head { display:flex; align-items:center; gap:10px; color:var(--muted); font-size:13px;
+      margin:0 0 12px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+    .scan-head a { color:var(--text); font-weight:600; text-decoration:none; }
+    .scan-head a:hover { color:var(--accent-hover); }
+
+    .cards { display:flex; flex-direction:column; gap:10px; }
+    .jobcard { background:var(--panel-2); border:1px solid var(--border); border-radius:10px;
+      overflow:hidden; }
+    .jc-head { width:100%; text-align:left; background:none; border:0; color:inherit; cursor:pointer;
+      display:grid; grid-template-columns:20px 1fr auto; align-items:start; gap:10px;
+      padding:11px 14px; font:inherit; }
+    .jc-head:hover { background:rgba(255,255,255,.02); }
+    .jc-head:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+    .caret { color:var(--muted); font-size:12px; line-height:1.7; transition:transform .15s ease; }
+    .jobcard.open .caret { transform:rotate(90deg); }
+    .jc-title { font-size:15px; font-weight:600; }
+    .jc-summary { color:var(--muted); font-size:12.5px; margin-top:2px; }
+    .jc-summary .where { color:var(--text); }
+    .oc-adv { color:var(--adv); } .oc-drop { color:var(--drop); }
+
+    .badge { display:inline-block; font-size:11px; font-weight:700; letter-spacing:.04em;
+      text-transform:uppercase; border-radius:5px; padding:2px 8px; white-space:nowrap; }
+    .badge.stored { color:var(--adv); background:var(--adv-bg); border:1px solid var(--adv-bd); }
+    .badge.dropped { color:var(--drop); background:var(--drop-bg); border:1px solid var(--drop-bd); }
+    .badge.other { color:var(--muted); background:var(--panel); border:1px solid var(--border); }
+    .badge.manual { color:#bcd0ff; background:#182747; border:1px solid #2f4d86; }
+
+    .jc-actions { display:flex; align-items:center; gap:10px; padding:8px 14px;
+      border-top:1px solid var(--border); }
+    .view-posting { color:var(--accent); text-decoration:none; font-size:12.5px; }
+    .view-posting:hover { color:var(--accent-hover); text-decoration:underline; }
+    {% if ns.has_track %}
+    .track-btn { background:none; border:1px solid var(--border); color:var(--accent);
+      cursor:pointer; border-radius:7px; padding:5px 11px; font-size:12.5px; }
+    .track-btn:hover:not(:disabled) { border-color:var(--accent); }
+    .track-btn:disabled { opacity:.55; cursor:default; }
+    {% endif %}
+    .track-msg { font-size:12.5px; color:var(--muted); }
+    .track-msg.ok { color:var(--adv); } .track-msg.err { color:var(--drop); }
+
+    .trace-wrap { display:none; padding:2px 14px 13px 44px; border-top:1px solid var(--border); }
+    .jobcard.open .trace-wrap { display:block; }
+    .trace { list-style:none; margin:10px 0 0; padding:0; display:flex; flex-direction:column; gap:2px; }
+    .trace li { display:grid; grid-template-columns:26px 118px 84px 1fr; align-items:baseline;
+      font-size:12.5px; padding:3px 6px; border-radius:5px; }
+    .trace li:hover { background:rgba(255,255,255,.03); }
+    .trace .n { color:var(--muted); }
+    .trace .st { color:var(--text); }
+    .trace .dt { color:var(--muted); }
+
+    .empty { color:var(--muted); font-size:14px; padding:24px 4px; }
+    .pager { margin-top:22px; } .pager a { color:var(--accent); text-decoration:none; margin-right:16px; }
+
+    @media (prefers-reduced-motion: reduce) { .caret { transition:none; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <a class="back" href="{{ url_for('developer_scan_audits_route') }}">← Scan list</a>
+    <h1>Scan Audit — Events</h1>
+    <p class="sub">
+      {% if scan_id %}Scan #{{ scan_id }} · {% endif %}{{ total }} job(s) match.
+    </p>
+
+    <form class="filters" method="get">
+      {% if scan_id %}<input type="hidden" name="scan_id" value="{{ scan_id }}">{% endif %}
+      <div><label>Stage</label>
+        <select name="stage">
+          <option value="">any</option>
+          {% for s in ['sieve_pass','list_screen','pre_fetch_us','dedup','fetch','deep_screen','store','manual_add'] %}
+          <option value="{{ s }}" {{ 'selected' if args.get('stage')==s }}>{{ s }}</option>{% endfor %}
+        </select></div>
+      <div><label>Outcome</label>
+        <select name="outcome">
+          <option value="">any</option>
+          {% for o in ['keyword','meaning-net','advanced','dropped','stored','failed','ok'] %}
+          <option value="{{ o }}" {{ 'selected' if args.get('outcome')==o }}>{{ o }}</option>{% endfor %}
+        </select></div>
+      <div><label>Reason</label>
+        <select name="reason_bucket">
+          <option value="">any</option>
+          {% for b in buckets %}
+          <option value="{{ b }}" {{ 'selected' if args.get('reason_bucket')==b }}>{{ b }}</option>{% endfor %}
+        </select></div>
+      <div><label>Company</label>
+        <input type="text" name="company" value="{{ args.get('company','') }}" placeholder="contains…"></div>
+      <div><label>Per page</label>
+        <select name="per">
+          {% for n in per_options %}
+          <option value="{{ n }}" {{ 'selected' if per == n }}>{{ 'All' if n == 'all' else n }}</option>{% endfor %}
+        </select></div>
+      <div><button type="submit" class="filter-btn">Filter</button></div>
+    </form>
+
+    {% if scans %}
+    <div class="toolbar"><button class="bulk" id="bulk" type="button">Expand all</button></div>
+
+    {% for scan in scans %}
+    <section class="scan-group">
+      <div class="scan-head">
+        <a href="{{ url_for('developer_scan_events_route', scan_id=scan['scan_id']) }}">Scan #{{ scan['scan_id'] }}</a>
+        {% if scan['started_at'] %}· <span class="mono">{{ scan['started_at'].strftime('%Y-%m-%d %H:%M') }}</span>{% endif %}
+        · {{ scan['jobs'] | length }} job(s)
+      </div>
+      <div class="cards">
+        {% for job in scan['jobs'] %}
+        <div class="jobcard">
+          <button class="jc-head" type="button">
+            <span class="caret">▶</span>
+            <span>
+              <span class="jc-title">{{ job['company'] }} — {{ job['title'] }}</span>
+              <span class="jc-summary">{{ job['source'] }}:{{ job['board_token'] }}{% if job['location'] %} · {{ job['location'] }}{% endif %}
+                · <span class="{{ 'oc-drop' if job['final_outcome'] in ('dropped','failed') else 'oc-adv' }}">{{ job['final_outcome'] }}</span>
+                at <span class="where">{{ job['final_stage'] }}</span>{% if job['final_detail'] %} · {{ job['final_detail'] }}{% endif %}</span>
+            </span>
+            {% if job['manually_added'] %}<span class="badge manual">added by me</span>
+            {% elif job['stored'] %}<span class="badge stored">stored</span>
+            {% elif job['final_outcome'] == 'dropped' %}<span class="badge dropped">dropped</span>
+            {% else %}<span class="badge other">{{ job['final_outcome'] }}</span>{% endif %}
+          </button>
+          {% set _track = not job['stored'] and not job['manually_added'] and job['external_id'] %}
+          {% if job['url'] or _track %}
+          <div class="jc-actions">
+            {% if job['url'] %}<a class="view-posting" href="{{ job['url'] }}" target="_blank" rel="noopener noreferrer">View posting ↗</a>{% endif %}
+            {% if _track %}
+            <button class="track-btn" type="button"
+                    data-source="{{ job['source'] }}" data-token="{{ job['board_token'] }}"
+                    data-ext="{{ job['external_id'] }}" data-scan="{{ scan['scan_id'] }}"
+                    data-company="{{ job['company'] }}" data-title="{{ job['title'] }}"
+                    data-url="{{ job['url'] }}">➕ Track this job</button>
+            <span class="track-msg"></span>
+            {% endif %}
+          </div>
+          {% endif %}
+          <div class="trace-wrap">
+            <ul class="trace">
+              {% for e in job['events'] %}
+              <li>
+                <span class="n mono">{{ e['seq'] }}</span>
+                <span class="st">{{ e['stage'] }}</span>
+                <span class="{{ 'oc-drop' if e['outcome'] in ('dropped','failed') else 'oc-adv' }}">{{ e['outcome'] }}</span>
+                <span class="dt">{{ e['detail'] }}</span>
+              </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+    {% else %}
+    <p class="empty">No events match these filters.</p>
+    {% endif %}
+
+    <div class="pager">
+      {% if has_prev %}<a href="{{ url_for('developer_scan_events_route', **dict(args, page=page-1)) }}">← Prev</a>{% endif %}
+      {% if has_next %}<a href="{{ url_for('developer_scan_events_route', **dict(args, page=page+1)) }}">Next →</a>{% endif %}
+    </div>
+  </div>
+
+  <script>
+    document.querySelectorAll('.jc-head').forEach(function (h) {
+      h.addEventListener('click', function () { h.closest('.jobcard').classList.toggle('open'); });
+    });
+    var bulk = document.getElementById('bulk');
+    if (bulk) {
+      bulk.addEventListener('click', function () {
+        var cards = document.querySelectorAll('.jobcard');
+        var anyClosed = [].some.call(cards, function (c) { return !c.classList.contains('open'); });
+        cards.forEach(function (c) { c.classList.toggle('open', anyClosed); });
+        bulk.textContent = anyClosed ? 'Collapse all' : 'Expand all';
+      });
+    }
+    {% if ns.has_track %}
+    document.querySelectorAll('.track-btn').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var msg = b.parentNode.querySelector('.track-msg');
+        b.disabled = true; msg.className = 'track-msg'; msg.textContent = 'Tracking…';
+        // Honor the home page's persisted AI-Fit backend (shared localStorage key with
+        // index.html's LLM_SELECT_STORE['llm-fit']); server falls back to chatgpt if blank.
+        var fitLlm = localStorage.getItem('resumeLlmFit') || 'chatgpt';
+        var body = new URLSearchParams({ source: b.dataset.source, board_token: b.dataset.token,
+                                         external_id: b.dataset.ext, scan_id: b.dataset.scan,
+                                         company: b.dataset.company, title: b.dataset.title,
+                                         url: b.dataset.url, llm_fit: fitLlm });
+        fetch('{{ url_for("developer_scan_add_job_route") }}', { method: 'POST', body: body })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (d.ok) { msg.className = 'track-msg ok'; msg.textContent = '✓ ' + d.message; }
+            else { msg.className = 'track-msg err'; msg.textContent = '✗ ' + d.error; b.disabled = false; }
+          })
+          .catch(function (e) { msg.className = 'track-msg err'; msg.textContent = '✗ ' + e; b.disabled = false; });
+      });
+    });
+    {% endif %}
+  </script>
+</body>
+</html>

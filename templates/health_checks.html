@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local LLM Health Checks</title>
+  <style>
+    /* Shares the home page's dark design system (see templates/index.html). */
+    :root {
+      --bg: #0f1117; --panel: #181b24; --panel-2: #1f2330; --border: #2a2f3e;
+      --text: #e6e8ee; --muted: #9aa3b2; --accent: #5b8cff; --accent-hover: #6f9bff;
+      --success-bg: #16301f; --success-fg: #6ee7a0; --success-bd: #245c3a;
+      --error-bg: #34161a; --error-fg: #ff9aa3; --error-bd: #6b2630;
+      --info-bg: #1d2a40; --info-fg: #8fb6ff; --info-bd: #2f4a72;
+      --gold: #e6c46b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.5;
+    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 36px 30px 80px; }
+    h1 { font-size: 26px; margin: 0 0 4px; }
+    h2.chat-title { font-size: 16px; margin: 34px 0 4px; }
+    .sub { color: var(--muted); margin: 0 0 20px; font-size: 14px; }
+    a.back { color: var(--accent); text-decoration: none; font-size: 14px; }
+    a.back:hover { color: var(--accent-hover); }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    .toolbar { display: flex; gap: 10px; margin: 18px 0 22px; flex-wrap: wrap; }
+    button {
+      font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+      background: var(--panel-2); color: var(--accent);
+      border: 1px solid var(--border); border-radius: 8px; padding: 9px 16px;
+    }
+    button:hover { border-color: var(--accent); background: #20283c; }
+    button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+    button.primary:hover { background: var(--accent-hover); }
+    /* Per-check "dismiss result" button — hidden until a result renders. */
+    button.close-btn {
+      display: none; padding: 5px 10px; font-size: 12px; line-height: 1;
+      background: transparent; color: var(--muted); border: 1px solid var(--border);
+    }
+    button.close-btn:hover { color: var(--text); border-color: var(--muted); background: var(--panel-2); }
+
+    .check {
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 12px; padding: 16px 18px; margin: 14px 0;
+    }
+    .check-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .label { font-weight: 600; font-size: 15px; }
+    .meta { color: var(--muted); font-size: 12.5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .badge {
+      margin-left: auto; font-size: 11px; font-weight: 700; padding: 3px 10px;
+      border-radius: 999px; text-transform: uppercase; letter-spacing: 0.4px;
+      background: var(--panel-2); color: var(--muted); border: 1px solid var(--border);
+    }
+    .badge.ok { background: var(--success-bg); color: var(--success-fg); border-color: var(--success-bd); }
+    .badge.err { background: var(--error-bg); color: var(--error-fg); border-color: var(--error-bd); }
+    .badge.testing { background: var(--info-bg); color: var(--info-fg); border-color: var(--info-bd); }
+    pre.response {
+      background: var(--bg); color: var(--text); border: 1px solid var(--border);
+      padding: 12px 14px; border-radius: 8px; max-height: 340px; overflow: auto;
+      margin: 12px 0 0; font-size: 12.5px; white-space: pre-wrap; word-break: break-word;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    pre.response:empty { display: none; }
+
+    /* /api/chat interactive card */
+    .chat-card .field { margin: 12px 0; }
+    .chat-card label { display: block; font-weight: 600; font-size: 13px; margin: 0 0 4px; }
+    .chat-card .type { font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px; color: var(--accent); font-weight: 600; margin-left: 6px; }
+    .chat-card .desc { color: var(--muted); font-size: 12.5px; margin: 0 0 6px; }
+    .chat-card input[type=text], .chat-card textarea, .chat-card select {
+      font: inherit; font-size: 14px; padding: 8px 11px; width: 100%;
+      background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+      border-radius: 8px;
+    }
+    .chat-card input:focus, .chat-card textarea:focus, .chat-card select:focus {
+      outline: none; border-color: var(--accent);
+    }
+    .chat-card textarea { resize: vertical; min-height: 40px; }
+    .chat-card select { width: auto; }
+    .required-note {
+      font-size: 11px; font-weight: 700; color: var(--gold); text-transform: uppercase;
+      letter-spacing: 0.5px; margin: 14px 0 6px;
+    }
+    button.mini { padding: 4px 10px; font-size: 12px; font-weight: 600; }
+    button.rm {
+      background: transparent; border: 1px solid #5c2a2a; color: #e08a8a;
+      padding: 4px 9px; line-height: 1;
+    }
+    button.rm:hover { background: #7a2e2e; border-color: #7a2e2e; color: #fff; }
+    .msg-row { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; }
+    .msg-row select { flex: 0 0 8rem; }
+    .msg-row textarea { flex: 1; }
+    .chat-card details {
+      border: 1px solid var(--border); border-radius: 8px; margin: 10px 0; background: var(--panel-2);
+    }
+    .chat-card summary {
+      cursor: pointer; font-weight: 600; font-size: 14px; padding: 9px 13px; user-select: none;
+    }
+    .chat-card summary:hover { color: var(--accent); }
+    .chat-card details[open] summary { border-bottom: 1px solid var(--border); }
+    .details-body { padding: 8px 14px 12px; }
+    .opt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 22px; }
+    .opt-grid .field { margin: 8px 0; }
+    @media (max-width: 640px) { .opt-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <p><a class="back" href="{{ url_for('index') }}">← Back to home</a></p>
+    <h1>Local LLM Health Checks</h1>
+    <p class="sub">Each check runs server-side (Python <code>requests</code>) against the local Ollama server.</p>
+
+    <div class="toolbar">
+      <button class="primary" id="test-all">Test all</button>
+      <button id="retest-failed">Re-test failed</button>
+    </div>
+
+    {% for check in checks %}
+    <div class="check" data-check="{{ check.id }}" data-ok="">
+      <div class="check-head">
+        <span class="label">{{ check.label }}</span>
+        <span class="meta">{{ check.method }} {{ check.url }}</span>
+        <span class="badge">not run</span>
+        <button class="test-btn">Test</button>
+        <button type="button" class="close-btn" title="Dismiss this result">✕</button>
+      </div>
+      <pre class="response"></pre>
+    </div>
+    {% endfor %}
+
+    <h2 class="chat-title">chat — <code>/api/chat</code></h2>
+    <p class="sub">Compose a request and send it server-side to the local <code>/api/chat</code> endpoint. Not part of Test all.</p>
+    <div class="check chat-card" data-check="chat" data-ok="">
+      <div class="required-note">Required</div>
+      <div class="field">
+        <label>model <span class="type">string</span></label>
+        <div class="desc">Model name / tag to run.</div>
+        <select id="chat-model"></select>
+        <input type="text" id="chat-model-custom" placeholder="custom model tag" style="display:none">
+      </div>
+      <div class="field">
+        <label>messages <span class="type">array</span></label>
+        <div class="desc">Chat history — one or more role/content turns.</div>
+        <div id="chat-msgs"></div>
+        <button type="button" class="mini" id="chat-add-msg">+ add message</button>
+      </div>
+
+      <details>
+        <summary>Optional — top-level parameters</summary>
+        <div class="details-body opt-grid" id="chat-top"></div>
+      </details>
+      <details>
+        <summary>Optional — generation options (options.*)</summary>
+        <div class="details-body opt-grid" id="chat-opts"></div>
+      </details>
+
+      <div class="field">
+        <label>timeout <span class="type">integer (s)</span></label>
+        <div class="desc">Server-side request timeout in seconds.</div>
+        <input type="text" id="chat-timeout" value="{{ chat_timeout_default }}">
+      </div>
+
+      <div class="check-head" style="margin-top:12px">
+        <button class="primary" id="chat-send">Send</button>
+        <span class="badge">not run</span>
+        <button type="button" class="close-btn" title="Dismiss this result">✕</button>
+      </div>
+      <pre class="response"></pre>
+    </div>
+  </div>
+
+  <script>
+    const CHECK_IDS = {{ checks | map(attribute='id') | list | tojson }};
+
+    function rowEl(id) {
+      return document.querySelector('[data-check="' + CSS.escape(id) + '"]');
+    }
+
+    function render(row, data) {
+      const badge = row.querySelector('.badge');
+      const pre = row.querySelector('.response');
+      row.dataset.ok = data.ok ? 'true' : 'false';
+      if (data.error) {
+        badge.textContent = (data.elapsed_ms != null) ? 'ERROR · ' + data.elapsed_ms + ' ms' : 'ERROR';
+        badge.className = 'badge err';
+        pre.textContent = data.error;
+      } else {
+        badge.textContent = data.status_code + ' · ' + data.elapsed_ms + ' ms';
+        badge.className = 'badge ' + (data.ok ? 'ok' : 'err');
+        pre.textContent = (typeof data.response === 'string')
+          ? data.response
+          : JSON.stringify(data.response, null, 2);
+      }
+      const closeBtn = row.querySelector('.close-btn');
+      // Explicit value, not '' — an empty string clears the inline style and the element
+      // falls back to the stylesheet's `display:none`, so the button would stay hidden.
+      if (closeBtn) closeBtn.style.display = 'inline-block';   // a result exists → offer to dismiss it
+    }
+
+    // Dismiss a check's result: clear the response panel and reset the row to its
+    // pristine "not run" look. Delegated so it also covers the /api/chat card.
+    function dismissResult(row) {
+      const badge = row.querySelector('.badge');
+      const pre = row.querySelector('.response');
+      const closeBtn = row.querySelector('.close-btn');
+      if (pre) pre.textContent = '';                   // pre.response:empty then hides it
+      if (badge) { badge.textContent = 'not run'; badge.className = 'badge'; }
+      if (closeBtn) closeBtn.style.display = 'none';
+      row.dataset.ok = '';
+    }
+
+    async function runCheck(id) {
+      const row = rowEl(id);
+      const badge = row.querySelector('.badge');
+      badge.textContent = 'testing…';
+      badge.className = 'badge testing';
+      row.dataset.ok = '';
+      try {
+        const resp = await fetch('/health-checks/run/' + encodeURIComponent(id));
+        render(row, await resp.json());
+      } catch (e) {
+        badge.textContent = 'ERROR';
+        badge.className = 'badge err';
+        row.querySelector('.response').textContent = String(e);
+        row.dataset.ok = 'false';
+      }
+    }
+
+    function testAll() { CHECK_IDS.forEach(runCheck); }
+
+    function retestFailed() {
+      // Only the registered metadata checks participate in the batch buttons; the
+      // interactive /api/chat card (data-check="chat") is driven by its own Send button.
+      document.querySelectorAll('[data-check]').forEach(function (row) {
+        if (row.dataset.ok === 'false' && CHECK_IDS.includes(row.dataset.check)) {
+          runCheck(row.dataset.check);
+        }
+      });
+    }
+
+    // Event delegation instead of inline onclick handlers: keeps check ids out
+    // of JS string literals (robust if an id ever contains a quote) and avoids
+    // inline scripts.
+    document.getElementById('test-all').addEventListener('click', testAll);
+    document.getElementById('retest-failed').addEventListener('click', retestFailed);
+    document.addEventListener('click', function (e) {
+      if (e.target.classList.contains('test-btn')) {
+        const row = e.target.closest('[data-check]');
+        if (row) runCheck(row.dataset.check);
+      } else if (e.target.classList.contains('close-btn')) {
+        const row = e.target.closest('[data-check]');
+        if (row) dismissResult(row);
+      }
+    });
+
+    // ---- /api/chat interactive card ----------------------------------
+    const CHAT_PARAMS = {{ chat_params | tojson }};
+    const CHAT_MODELS = {{ chat_models | tojson }};
+
+    (function initChat() {
+      const modelSel = document.getElementById('chat-model');
+      const customInp = document.getElementById('chat-model-custom');
+      CHAT_MODELS.forEach(function (m) {
+        const o = document.createElement('option');
+        o.value = m; o.textContent = m; modelSel.appendChild(o);
+      });
+      const customOpt = document.createElement('option');
+      customOpt.value = '__custom__'; customOpt.textContent = 'Custom…';
+      modelSel.appendChild(customOpt);
+
+      modelSel.addEventListener('change', function () {
+        const custom = modelSel.value === '__custom__';
+        customInp.style.display = custom ? '' : 'none';
+        if (custom) customInp.focus();
+      });
+      // Hand-editing the custom box while a real model is selected flips to Custom,
+      // so the select never silently disagrees with the text.
+      customInp.addEventListener('input', function () {
+        if (modelSel.value !== '__custom__') modelSel.value = '__custom__';
+      });
+
+      function addMsg(role, content) {
+        const host = document.getElementById('chat-msgs');
+        const row = document.createElement('div');
+        row.className = 'msg-row';
+        row.innerHTML =
+          '<select>' +
+          ['system', 'user', 'assistant', 'tool'].map(function (r) {
+            return '<option ' + (r === role ? 'selected' : '') + '>' + r + '</option>';
+          }).join('') +
+          '</select><textarea placeholder="content..."></textarea>' +
+          '<button type="button" class="mini rm">×</button>';
+        row.querySelector('textarea').value = content || '';
+        row.querySelector('.rm').addEventListener('click', function () { row.remove(); });
+        host.appendChild(row);
+      }
+      document.getElementById('chat-add-msg').addEventListener('click', function () { addMsg('user', ''); });
+      addMsg('user', 'Say hello in one word.');
+
+      function fieldHTML(p) {
+        const ph = (p.name === 'format') ? 'json  — or a schema object'
+                 : (p.name === 'tools') ? "[ { 'type': 'function', ... } ]"
+                 : (p.type.indexOf('bool') === 0) ? 'true / false' : p.type;
+        const tag = (p.group === 'options')
+          ? ' <span class="type" style="color:var(--muted)">options.*</span>' : '';
+        return '<div class="field" data-name="' + p.name + '" data-type="' + p.type +
+               '" data-group="' + p.group + '">' +
+               '<label>' + p.name + ' <span class="type">' + p.type + '</span>' + tag + '</label>' +
+               '<div class="desc">' + p.desc + '</div>' +
+               '<input type="text" placeholder="' + ph + '"></div>';
+      }
+      document.getElementById('chat-top').innerHTML =
+        CHAT_PARAMS.filter(function (p) { return p.group === 'top'; }).map(fieldHTML).join('');
+      document.getElementById('chat-opts').innerHTML =
+        CHAT_PARAMS.filter(function (p) { return p.group === 'options'; }).map(fieldHTML).join('');
+
+      function setField(name, val) {
+        const f = document.querySelector('.chat-card .field[data-name="' + name + '"] input');
+        if (f) f.value = val;
+      }
+      // Default to a fast, cheap happy-path probe.
+      setField('stream', 'false');
+      setField('think', 'false');
+      setField('num_predict', '500');
+
+      function coerce(type, name, raw) {
+        const s = raw.trim();
+        if (name === 'format' || name === 'tools' || name === 'stop') {
+          try { return JSON.parse(s); } catch (e) { return s; }
+        }
+        if (type.indexOf('bool') === 0) {
+          if (s === 'true') return true;
+          if (s === 'false') return false;
+          return s;
+        }
+        if (type === 'integer') { const n = parseInt(s, 10); return isNaN(n) ? s : n; }
+        if (type === 'number') { const n = parseFloat(s); return isNaN(n) ? s : n; }
+        return s;
+      }
+
+      function buildBody() {
+        const model = (modelSel.value === '__custom__') ? customInp.value.trim() : modelSel.value;
+        const messages = Array.prototype.map.call(
+          document.querySelectorAll('#chat-msgs .msg-row'), function (row) {
+            return { role: row.querySelector('select').value,
+                     content: row.querySelector('textarea').value };
+          });
+        const body = { model: model, messages: messages };
+        const options = {};
+        document.querySelectorAll('.chat-card .field[data-name]').forEach(function (f) {
+          const inp = f.querySelector('input');
+          if (!inp || !inp.value.trim()) return;                 // omit untouched fields
+          const val = coerce(f.dataset.type, f.dataset.name, inp.value);
+          if (f.dataset.group === 'options') options[f.dataset.name] = val;
+          else body[f.dataset.name] = val;
+        });
+        if (Object.keys(options).length) body.options = options; // omit an empty options object
+        return body;
+      }
+
+      document.getElementById('chat-send').addEventListener('click', async function () {
+        const row = document.querySelector('.chat-card');
+        const badge = row.querySelector('.badge');
+        badge.textContent = 'testing…'; badge.className = 'badge testing';
+        row.dataset.ok = '';
+        const timeout = parseInt(document.getElementById('chat-timeout').value, 10);
+        try {
+          const resp = await fetch('/health-checks/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ body: buildBody(), timeout: timeout })
+          });
+          render(row, await resp.json());     // reuse the page's result renderer
+        } catch (e) {
+          badge.textContent = 'ERROR'; badge.className = 'badge err';
+          row.querySelector('.response').textContent = String(e);
+          row.dataset.ok = 'false';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

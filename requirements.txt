@@ -1,0 +1,15 @@
+# Direct dependencies only (human-edited). requirements.lock pins the full resolved
+# tree for reproducible installs — regenerate it after changing this file:
+#   python3 -m venv /tmp/lockenv && /tmp/lockenv/bin/pip install -q -r requirements.txt \
+#     && /tmp/lockenv/bin/pip freeze > requirements.lock
+python-docx
+jinja2
+requests
+anthropic
+beautifulsoup4
+playwright
+python-dotenv
+flask
+pypdf
+pytest
+psycopg[binary]

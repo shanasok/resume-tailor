@@ -1,0 +1,23 @@
+# Never bake secrets or personal data into the image. resumes/, logs/ and the personal
+# data/ files are volume-mounted at runtime instead (see docker-compose.yml).
+.env
+resumes/
+logs/
+postgres_data/
+backups/
+data/Connections.csv
+data/filter_config.json
+data/scheduled_runs.json
+
+# Build/dev cruft
+.git/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.idea/
+.vscode/
+.DS_Store
+tests/
+docs/

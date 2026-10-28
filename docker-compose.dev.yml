@@ -1,0 +1,22 @@
+# docker-compose.dev.yml — DEV override: run the containerized app against your live
+# working tree, so code edits apply WITHOUT rebuilding the image.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up app
+#
+# The project folder is bind-mounted over the image's /app and Flask's debug mode +
+# auto-reloader are switched on, so every file save restarts the server inside the
+# container. Use this to iterate on container-specific behavior (the non-root user,
+# the containerized claude CLI, Linux Chromium rendering). For everyday development,
+# running the app directly on your Mac is still the nicer loop (see README).
+#
+# Dependency changes still need a rebuild — packages are installed in the image, not
+# in the mounted folder:  docker compose up -d --build app
+
+services:
+  app:
+    volumes:
+      # Your working tree replaces the code baked into the image. (The resumes/,
+      # data/, logs/ mounts from the base file are inside this path anyway.)
+      - .:/app
+    environment:
+      FLASK_DEBUG: "1"                 # debug + auto-reloader (app.py reads this)

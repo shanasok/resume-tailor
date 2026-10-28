@@ -1,0 +1,71 @@
+# docker-compose.yml — the whole stack: the web app + its PostgreSQL database.
+#
+#   docker compose up --build        # build + start everything → http://127.0.0.1:5001
+#   docker compose up -d db          # JUST the database (for local `python app.py` dev)
+#   docker compose exec db psql -U resume resume_handler    # poke around the data
+#
+# Data lives in ./postgres_data on YOUR machine (a bind mount, gitignored) — it
+# survives container/image deletion and even a Docker Desktop reset/uninstall.
+# On the very first start against an empty database, the app imports your existing
+# resumes/applications.csv and logs/generation_log.csv automatically (the CSVs are
+# left on disk as a backup).
+#
+# Claude CLI auth inside the app container: put CLAUDE_CODE_OAUTH_TOKEN in .env
+# (generate it once on your Mac with `claude setup-token`). The container can't use
+# your Mac's keychain login.
+
+services:
+  db:
+    # pgvector/pgvector:pg16 = plain PostgreSQL 16 + the "vector" extension (used to
+    # store job-description embeddings for the Match % ranking). Same data format, so
+    # the existing ./postgres_data directory keeps working unchanged.
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: resume
+      POSTGRES_PASSWORD: resume
+      POSTGRES_DB: resume_handler
+    # Published to the host so local (non-docker) `python app.py` and psql can reach it.
+    ports:
+      - "5432:5432"
+    volumes:
+      # Bind mount (not a named volume): the database files live in the project
+      # folder on the host, out of Docker Desktop's reach.
+      - ./postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U resume -d resume_handler"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build: .
+    restart: unless-stopped
+    # PID 1 is a real init: reaps the claude-CLI / Chromium subprocesses the app spawns,
+    # so a crashed render can't accumulate zombie processes.
+    init: true
+    ports:
+      - "5001:5001"
+    healthcheck:
+      # /health also round-trips the database, so "healthy" means actually usable.
+      test: ["CMD", "curl", "-fsS", "http://localhost:5001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    # .env carries the secrets (CHATGPT_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, …). The
+    # `environment:` entries below override anything with the same name in .env.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DATABASE_URL: postgresql://resume:resume@db:5432/resume_handler
+    # Generated résumés, the base résumé, board lists, and logs live on the host so
+    # they survive rebuilds and stay browsable in the IDE.
+    volumes:
+      - ./resumes:/app/resumes
+      - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      db:
+        condition: service_healthy

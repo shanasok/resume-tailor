@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ resume.name }} — Resume</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Arial', 'Helvetica Neue', sans-serif;
+    font-size: 10pt;
+    line-height: 1.22;
+    color: #1a1a1a;
+    background: #fff;
+    max-width: 8.5in;
+    margin: 0 auto;
+    padding: 0.4in 0.4in;
+  }
+
+  /* ── Header ─────────────────────────────────────────── */
+  .header {
+    text-align: center;
+    margin-bottom: 10px;
+    padding-bottom: 9px;
+    border-bottom: 2px solid #1a1a1a;
+  }
+  .name {
+    font-size: 20pt;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: #0a0a0a;
+  }
+  .contact {
+    font-size: 9pt;
+    color: #444;
+    margin-top: 5px;
+    letter-spacing: 0.2px;
+  }
+  .contact a { color: #444; text-decoration: none; }
+
+  /* ── Section ─────────────────────────────────────────── */
+  /* 4px (was 6px): trims accumulated whitespace across the ~6 sections so a résumé that
+     spilled one line onto a third page pulls back onto two. Paired with .job margin below. */
+  .section { margin-top: 4px; }
+
+  .section-title {
+    font-size: 9.5pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.8px;
+    color: #0a0a0a;
+    border-bottom: 1px solid #ccc;
+    padding-bottom: 2px;
+    margin-bottom: 4px;
+  }
+
+  /* ── Summary ─────────────────────────────────────────── */
+  .summary p {
+    font-size: 10pt;
+    color: #222;
+  }
+
+  /* ── Competencies ────────────────────────────────────── */
+  .competencies {
+    font-size: 9.5pt;
+    line-height: 1.5;
+    color: #222;
+    text-align: center;
+  }
+  .competency-sep {
+    margin: 0 5px;
+    color: #888;
+  }
+
+  /* ── Experience ──────────────────────────────────────── */
+  .job { margin-bottom: 4px; }   /* 4px (was 6px): see .section note — reclaims a line to hold two pages */
+
+  .job-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .company {
+    font-weight: 700;
+    font-size: 10.5pt;
+    color: #0a0a0a;
+  }
+  .dates {
+    font-size: 9pt;
+    color: #555;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .job-title {
+    font-size: 10pt;
+    font-style: italic;
+    color: #333;
+    margin-top: 1px;
+    margin-bottom: 4px;
+  }
+  .bullets {
+    padding-left: 14px;
+  }
+  .bullets li {
+    font-size: 9.5pt;
+    margin-bottom: 1.5px;
+    color: #222;
+  }
+
+  /* ── Education ───────────────────────────────────────── */
+  /* Each school gets a real bullet character (hanging indent) so ATS parsers read
+     them as separate education entries, not one merged block. The bullet is real
+     markup text, not a CSS ::before, because PDF text extractors often drop ::before. */
+  .edu-item { margin-bottom: 6px; padding-left: 12px; }
+  .edu-bullet { margin-left: -12px; margin-right: 5px; }
+  .edu-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .edu-institution {
+    font-weight: 700;
+    font-size: 10pt;
+  }
+  .edu-date {
+    font-size: 9pt;
+    color: #555;
+    white-space: nowrap;
+  }
+  .edu-degree { font-size: 9.5pt; color: #222; }
+  .edu-detail { font-size: 9pt; color: #555; }
+
+  /* ── Certifications ──────────────────────────────────── */
+  .cert-list {
+    font-size: 9.5pt;
+    color: #222;
+  }
+  .cert-list li {
+    margin-bottom: 2px;
+    list-style: none;
+    padding-left: 0;
+  }
+
+  /* ── Skills ──────────────────────────────────────────── */
+  .skill-row {
+    font-size: 9.5pt;
+    margin-bottom: 1.5px;
+    color: #222;
+  }
+  .skill-category {
+    font-weight: 700;
+    color: #0a0a0a;
+  }
+
+  /* ── Print ───────────────────────────────────────────── */
+  @media print {
+    body { padding: 0; }
+    /* Keep a section's heading with the content that follows it, but allow the
+       section body itself to flow across pages so it fills the page instead of
+       jumping wholesale to the next one (which left a big blank gap). */
+    .section-title { page-break-after: avoid; }
+    /* Let a long role flow across a page break instead of jumping wholesale to
+       the next page (which left a big gap). But never orphan a role's header at
+       the bottom of a page — keep the company/title with the bullets that follow,
+       and never break inside a single bullet. */
+    .job-header, .job-title { page-break-after: avoid; }
+    /* Allow a long (3+ line) bullet to split across the page boundary instead of jumping
+       wholesale to the next page — that jump left a multi-line blank gap at the bottom of
+       page 1. orphans:2 keeps at least 2 lines on page 1; widows:1 lets the remaining line
+       carry to page 2 (needed so a 3-line bullet can split 2+1 rather than jump whole). */
+    .bullets li { page-break-inside: auto; break-inside: auto; orphans: 2; widows: 1; }
+    .edu-item { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <div class="name">{{ resume.name }}</div>
+    <div class="contact">
+      {{ resume.contact.location }}
+      <span class="competency-sep">|</span>
+      {{ resume.contact.phone }}
+      <span class="competency-sep">|</span>
+      <a href="mailto:{{ resume.contact.email }}">{{ resume.contact.email }}</a>
+      <span class="competency-sep">|</span>
+      <a href="http://{{ resume.contact.website }}">{{ resume.contact.website }}</a>
+    </div>
+  </div>
+
+  <!-- Professional Summary -->
+  <div class="section summary">
+    <div class="section-title">Professional Summary</div>
+    <p>{{ resume.summary }}</p>
+  </div>
+
+  <!-- Core Competencies -->
+  {% if resume.competencies %}
+  <div class="section">
+    <div class="section-title">Core Competencies</div>
+    <div class="competencies">
+      {% for item in resume.competencies %}
+        {{ item }}{% if not loop.last %}<span class="competency-sep">•</span>{% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Professional Experience -->
+  <div class="section">
+    <div class="section-title">Professional Experience</div>
+    {% for job in resume.experience %}
+    <div class="job">
+      <div class="job-header">
+        <span class="company">{{ job.company }}</span>
+        <span class="dates">{{ job.dates }}</span>
+      </div>
+      <div class="job-title">{{ job.title }}</div>
+      <ul class="bullets">
+        {% for bullet in job.bullets %}
+        <li>{{ bullet }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Education -->
+  {% if resume.education %}
+  <div class="section">
+    <div class="section-title">Education</div>
+    {% for edu in resume.education %}
+    <div class="edu-item">
+      <div class="edu-header">
+        <span class="edu-institution"><span class="edu-bullet">•</span>{{ edu.institution }}</span>
+        <span class="edu-date">{{ edu.date }}</span>
+      </div>
+      <div class="edu-degree">{{ edu.degree }}</div>
+      {% if edu.detail %}<div class="edu-detail">{{ edu.detail }}</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Certifications -->
+  {% if resume.certifications %}
+  <div class="section">
+    <div class="section-title">Certifications</div>
+    <ul class="cert-list">
+      {% for cert in resume.certifications %}
+      <li>{{ cert }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <!-- Technical Skills -->
+  {% if resume.skills %}
+  <div class="section">
+    <div class="section-title">Technical Skills</div>
+    {% for skill in resume.skills %}
+    <div class="skill-row">
+      <span class="skill-category">{{ skill.category }}:</span> {{ skill['items'] }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+</body>
+</html>

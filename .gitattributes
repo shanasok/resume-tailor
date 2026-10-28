@@ -1,0 +1,5 @@
+# Enforce LF line endings in the repository regardless of a contributor's
+# core.autocrlf setting. Git normalizes text files to LF on commit and checks
+# them out as LF, so Windows editors that save CRLF can't leak CRLF into blobs
+# (which shows up as whole-file diffs and violates the project's LF convention).
+* text=auto eol=lf

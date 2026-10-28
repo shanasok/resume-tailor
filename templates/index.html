@@ -1,0 +1,1841 @@
+{% macro local_optgroup(models) -%}
+{% if models %}<optgroup label="Local (Ollama)">{% for tag in models %}
+              <option value="local:{{ tag }}">Local — {{ tag }}</option>{% endfor %}
+            </optgroup>{% endif %}
+{%- endmacro %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Resume Tailor</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --panel: #181b24;
+    --panel-2: #1f2330;
+    --border: #2a2f3e;
+    --text: #e6e8ee;
+    --muted: #9aa3b2;
+    --accent: #5b8cff;
+    --accent-hover: #6f9bff;
+    --success-bg: #16301f; --success-fg: #6ee7a0; --success-bd: #245c3a;
+    --error-bg: #34161a; --error-fg: #ff9aa3; --error-bd: #6b2630;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1600px; margin: 0; padding: 36px 30px 80px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 28px; font-size: 14px; }
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; margin-bottom: 28px;
+  }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 0 0 6px; color: var(--text); }
+  .hint { font-weight: 400; color: var(--muted); }
+  input[type=text], textarea {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 10px 12px; font-size: 14px;
+    font-family: inherit; margin-bottom: 18px;
+  }
+  input:focus, textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { resize: vertical; min-height: 90px; }
+  .row { display: flex; gap: 16px; }
+  .row > div { flex: 1; }
+  .or { text-align: center; color: var(--muted); font-size: 12px; margin: -6px 0 12px; text-transform: uppercase; letter-spacing: 1px; }
+  button {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 11px 22px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  button:hover { background: var(--accent-hover); }
+  button:disabled { opacity: 0.6; cursor: progress; }
+  .flash { padding: 11px 14px; border-radius: 8px; margin-bottom: 18px; font-size: 14px; border: 1px solid; }
+  .flash.success { background: var(--success-bg); color: var(--success-fg); border-color: var(--success-bd); }
+  .flash.error { background: var(--error-bg); color: var(--error-fg); border-color: var(--error-bd); }
+  h2 { font-size: 16px; margin: 0 0 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+  td a { color: var(--accent); text-decoration: none; margin-right: 10px; }
+  td a:hover { text-decoration: underline; }
+  .status { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .status.applied { background: var(--success-bg); color: var(--success-fg); border: 1px solid var(--success-bd); }
+  .status.pending { background: #2a2412; color: #e6c46b; border: 1px solid #5c4d24; }
+  .empty { color: var(--muted); font-size: 14px; padding: 8px 0; }
+  .joburl { color: var(--muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Summary banner */
+  .summary { display: flex; gap: 22px; margin-bottom: 16px; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px 18px; min-width: 92px; }
+  .stat .n { font-size: 22px; font-weight: 700; }
+  .stat .l { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat.pending .n { color: #e6c46b; }
+  .stat.applied .n { color: var(--success-fg); }
+
+  /* Applied button */
+  .apply-btn {
+    background: transparent; border: 1px solid var(--accent); color: var(--accent);
+    padding: 5px 12px; font-size: 12px; font-weight: 600; border-radius: 6px; cursor: pointer;
+    /* keep the icon + label on ONE line so the border always wraps the whole button
+       (a wrapped "⇄ Compare" used to break its frame) */
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    white-space: nowrap; text-decoration: none; line-height: 1.4;
+  }
+  .apply-btn:hover { background: var(--accent); color: #fff; }
+  /* Résumé cell: HTML/PDF links on top, then the manage buttons as a horizontal toolbar
+     that sits UNDER them (instead of the old cramped vertical stack). */
+  .resume-cell { vertical-align: top; width: 1px; }  /* shrink to content → tight gap to Match */
+  .resume-links { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+  /* fixed width holds exactly 2 buttons per row (2×2) and forces the cell to that width */
+  .resume-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 208px; }
+  .resume-actions form { margin: 0; display: inline-flex; }
+  /* "From JSON" is the cheap re-render (muted); "With LLM" does a full AI rewrite (spends
+     credits) so it's tinted to stand out. */
+  .regen-btn { border-color: var(--border); color: var(--muted); }
+  .regen-btn:hover { background: var(--panel-2); color: var(--text); }
+  .rewrite-btn { border-color: #b98b2e; color: #e0b45e; }
+  .rewrite-btn:hover { background: #b98b2e; color: #1a1200; }
+
+  /* Per-row delete (only shown in the To Apply tab — table gets .show-delete then). */
+  .delete-btn {
+    display: none;
+    background: transparent; border: 1px solid #5c2a2a; color: #e08a8a;
+    padding: 5px 10px; font-size: 12px; font-weight: 600; border-radius: 6px;
+    cursor: pointer; white-space: nowrap;
+  }
+  .delete-btn:hover { background: #7a2e2e; border-color: #7a2e2e; color: #fff; }
+  table.show-delete .delete-btn { display: inline-flex; align-items: center; gap: 4px; }
+
+  /* Per-resume email rewrite (pure code, no AI) */
+  .email-form { display: flex; gap: 6px; align-items: center; margin: 0; }
+  .email-input {
+    width: 150px; background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 5px 8px; font-size: 12px;
+    font-family: inherit; margin: 0;
+  }
+  .email-input:focus { outline: none; border-color: var(--accent); }
+  .applied-date { color: var(--success-fg); font-size: 12px; white-space: nowrap; }
+  .applied-date .check { margin-right: 4px; }
+  tr.is-applied td { background: rgba(36, 92, 58, 0.07); }
+
+  /* Phase 2: source badges, statuses, flags */
+  .source { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 10px;
+            font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; }
+  .source-manual { background: #1d2a40; color: #8fb6ff; border: 1px solid #2f4a72; }
+  .source-greenhouse { background: #16301f; color: #6ee7a0; border: 1px solid #245c3a; }
+  .status.found { background: #2a2412; color: #e6c46b; border: 1px solid #5c4d24; }
+  .status.generated { background: #1d2a40; color: #8fb6ff; border: 1px solid #2f4a72; }
+  .stat.no-resume .n { color: #e6c46b; }
+  .rowflag { color: #e6c46b; font-size: 11px; margin-top: 3px; max-width: 240px;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rowsalary { color: var(--success-fg); font-size: 11px; margin-top: 2px; }
+  .rowconns { font-size: 11px; margin-top: 4px; max-width: 240px; }
+  .rowconns .conns-label { color: var(--muted); }
+  .rowconns a { color: var(--accent); text-decoration: none; }
+  .rowconns a:hover { text-decoration: underline; }
+  .loc { color: var(--muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .muted { color: var(--muted); }
+  /* Status progression (Found / Generated / Applied, stacked) */
+  .progress { display: flex; flex-direction: column; gap: 3px; }
+  .progress .step { font-size: 11px; font-weight: 600; color: var(--muted);
+    padding: 2px 8px; border-radius: 5px; border: 1px solid transparent; white-space: nowrap; }
+  .progress .step.on { color: #d7ffe9; background: rgba(36,92,58,0.55); border-color: var(--success-bd); }
+  /* Grouped action columns (distinct tinted background) */
+  .action-head, .action-cell { background: rgba(91,140,255,0.07); }
+  .action-head { color: var(--accent); }
+  .action-group-start { border-left: 2px solid var(--accent); }
+  /* Match score */
+  .match-score { font-size: 17px; font-weight: 800; color: var(--accent); }
+  .match-of { font-size: 11px; color: var(--muted); font-weight: 600; }
+  /* Chat modal */
+  #chat-modal { display: none; position: fixed; inset: 0; background: rgba(8,10,15,0.78);
+    align-items: center; justify-content: center; z-index: 60; padding: 20px; }
+  #chat-modal.show { display: flex; }
+  .chat-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    width: 100%; max-width: 640px; height: min(80vh, 720px); display: flex; flex-direction: column; }
+  .chat-head { display: flex; justify-content: space-between; align-items: flex-start;
+    padding: 16px 18px; border-bottom: 1px solid var(--border); }
+  .chat-head strong { font-size: 16px; }
+  .chat-messages { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+  .chat-bubble { max-width: 85%; padding: 10px 13px; border-radius: 12px; font-size: 14px;
+    line-height: 1.5; white-space: pre-wrap; }
+  .chat-bubble.assistant { background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); align-self: flex-start; border-bottom-left-radius: 4px; }
+  .chat-bubble.user { background: var(--accent); color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+  .chat-note { align-self: center; font-size: 12px; color: var(--success-fg);
+    background: var(--success-bg); border: 1px solid var(--success-bd); border-radius: 8px; padding: 6px 12px; }
+  .chat-input-row { display: flex; gap: 10px; padding: 14px 18px; border-top: 1px solid var(--border); }
+  .chat-input-row textarea { flex: 1; background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 10px 12px; font-size: 14px; font-family: inherit;
+    resize: none; min-height: 44px; max-height: 120px; }
+  .chat-input-row textarea:focus { outline: none; border-color: var(--accent); }
+  /* Resume LLM / Settings / Find Jobs — equal-width boxes, header on top, controls below. */
+  .controls-row { display: flex; gap: 16px; margin-bottom: 22px; align-items: stretch; }
+  .controls-row > div { flex: 1; min-width: 0; }  /* equal share; min-width:0 lets boxes shrink */
+  .control-box { display: flex; flex-direction: column; gap: 8px;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; font-size: 14px; }
+  .control-box-title { font-weight: 600; color: var(--text); }
+  a.control-box-title { text-decoration: underline; color: var(--accent); }  /* Stats header is a link */
+  a.control-box-title:hover { color: var(--accent-hover); }
+  /* The four summary tiles, compacted into a 2x2 grid inside the Stats box. */
+  .stats-mini { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stats-mini .stat { min-width: 0; padding: 6px 10px; background: var(--panel-2); }
+  .stats-mini .stat .n { font-size: 18px; }
+  .control-box-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .control-box select { background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 7px 10px; font-size: 14px; font-family: inherit; }
+  .control-box select:focus { outline: none; border-color: var(--accent); }
+  .settings-btn { background: var(--panel-2); border: 1px solid var(--border); color: var(--accent);
+    text-decoration: none; padding: 7px 14px; border-radius: 8px; font-size: 14px; font-weight: 600; }
+  .settings-btn:hover { border-color: var(--accent); background: #20283c; }
+  .board-checklist { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+  .board-check { display: inline-flex; align-items: center; gap: 6px; font-size: 14px;
+    color: var(--text); cursor: pointer; text-transform: capitalize; }
+  .board-check input { accent-color: var(--accent); cursor: pointer; }
+  /* Tabs (To Apply / Applied) */
+  .tabs { display: flex; gap: 6px; margin: 4px 0 14px; border-bottom: 1px solid var(--border); }
+  .tab { background: transparent; border: 1px solid transparent; border-bottom: none;
+    color: var(--muted); padding: 9px 16px; font-size: 14px; font-weight: 600; cursor: pointer;
+    border-radius: 8px 8px 0 0; text-decoration: none; display: inline-block; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--text); background: var(--panel); border-color: var(--border);
+    margin-bottom: -1px; }
+  .tab-count { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
+    background: var(--panel-2); color: var(--muted); font-size: 12px; }
+  .tab.active .tab-count { background: var(--accent); color: #fff; }
+  /* Fit rating (1-5) */
+  /* Hover tooltips: instant, styled, and triggered by hovering ANYWHERE on the cell
+     (native title tooltips are delayed and easy to miss). Used by the AI Fit cell
+     (the verdict's reason) and the Match cell (the critic's full findings report —
+     pre-line keeps its blank-line section breaks). */
+  .aifit-cell, .match-cell { position: relative; }
+  .aifit-cell[data-tip]:hover::after {
+    content: attr(data-tip);
+    position: absolute; left: 50%; top: 100%; transform: translateX(-50%);
+    margin-top: 4px; padding: 8px 12px; width: max-content; max-width: 320px;
+    white-space: pre-line; text-align: left; line-height: 1.4;
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--accent); border-radius: 8px;
+    font-size: 12.5px; font-weight: 400; z-index: 60;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+    pointer-events: none;
+  }
+  /* AI Fit sits near the table's LEFT edge, so instead of dropping below the cell (which
+     lands it over the next row), show it to the RIGHT of the score and vertically centered
+     on it — right there, inline with the cell it describes. */
+  .aifit-cell[data-tip]:hover::after {
+    left: 100%; right: auto; top: 50%; transform: translateY(-50%);
+    margin-top: 0; margin-left: 8px;
+  }
+  .aifit-cell[data-tip] { cursor: help; }
+  /* Match — the critic's findings report is long, so unlike the AI Fit tooltip (a CSS
+     ::after that can't be hovered or scrolled) this is a REAL element nested inside the
+     score wrapper. Because .match-tip is a CHILD of .match-wrap, moving the mouse off the
+     score and onto the tooltip keeps .match-wrap:hover true — it stays open the whole time
+     you're reading it (the 4px gap has no dead zone). It hangs right under the score (the
+     wrap contains ONLY the score, so top:100% is just below the number, not below the whole
+     tall cell) and caps its own height with a scrollbar so a long report never runs off the
+     page. Hangs to the right edge since the Match column sits near the table's right side. */
+  .match-wrap { position: relative; display: inline-block; cursor: help; }
+  .match-tip {
+    display: none;
+    position: absolute; top: 100%; right: 0; margin-top: 4px;
+    padding: 8px 12px; width: max-content; max-width: 460px;
+    max-height: 260px; overflow-y: auto; overscroll-behavior: contain;
+    white-space: pre-line; text-align: left; line-height: 1.4;
+    background: var(--panel); color: var(--text);
+    border: 1px solid var(--accent); border-radius: 8px;
+    font-size: 12.5px; font-weight: 400; z-index: 60;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+  }
+  .match-wrap:hover .match-tip { display: block; }
+  .fit { font-size: 13px; letter-spacing: 1px; }
+  .fit-5 { color: #6ee7a0; }
+  .fit-4 { color: #8fe3c8; }
+  .fit-3 { color: #e6c46b; }
+  .fit-2 { color: #c79a6b; }
+  .fit-1 { color: #8a93a3; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  /* Inline per-row spinner shown while a single resume generates (no page freeze) */
+  .inline-spinner {
+    display: inline-block; width: 14px; height: 14px; vertical-align: -2px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 6px;
+  }
+  .genjob-status { color: var(--muted); font-size: 12px; }
+  /* Sortable column headers. Sorting happens in SQL, so each header is a link that
+     re-requests the page — the arrow is rendered by the server, not set by script. */
+  thead th.sortable { user-select: none; white-space: nowrap; }
+  thead th.sortable .sort-link { color: inherit; text-decoration: none; cursor: pointer; }
+  thead th.sortable .sort-link:hover { color: var(--text); }
+  /* Idle columns show a faint ↕ hint; the sorted one shows its real direction. */
+  thead th.sortable .sort-arrow::after { content: ' ↕'; opacity: 0.3; font-size: 10px; }
+  thead th.sortable.sorted .sort-arrow::after { content: ''; }
+  thead th.sortable.sorted .sort-arrow { opacity: 1; font-size: 10px; }
+  .col-search { display: flex; align-items: center; gap: 4px; margin-top: 6px; font-weight: 400; }
+  .col-search input { flex: 1; min-width: 60px; background: var(--panel-2); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 4px 8px; font-size: 12px; font-family: inherit; }
+  .col-search input:focus { outline: none; border-color: var(--accent); }
+  .col-search-clear { background: transparent; border: none; color: var(--muted); cursor: pointer;
+    font-size: 13px; padding: 2px 5px; line-height: 1; border-radius: 6px; text-decoration: none; }
+  .col-search-clear:hover { color: var(--text); background: var(--panel-2); }
+  /* Pager under the jobs table */
+  .pager { display: flex; align-items: center; justify-content: center; gap: 14px;
+    margin: 14px 0 4px; font-size: 13px; }
+  .page-btn { color: var(--text); text-decoration: none; border: 1px solid var(--border);
+    background: var(--panel-2); border-radius: 8px; padding: 6px 13px; font-weight: 600; }
+  .page-btn:hover { border-color: var(--accent); }
+  .page-btn.disabled { opacity: 0.35; pointer-events: none; }
+  .page-status { color: var(--muted); font-variant-numeric: tabular-nums; }
+  /* Retrieve-Jobs live progress card */
+  .scan-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 12px;
+    padding: 15px 17px; margin-top: 12px; max-width: 560px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.25); }
+  .scan-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .scan-radar { position: relative; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--accent); flex: none; }
+  .scan-radar::after { content: ''; position: absolute; inset: 0; border-radius: 50%;
+    background: var(--accent); animation: scanpulse 1.5s ease-out infinite; }
+  @keyframes scanpulse { 0% { transform: scale(1); opacity: .55; } 100% { transform: scale(3.2); opacity: 0; } }
+  .scan-stage { font-size: 13px; font-weight: 700; color: var(--text); }
+  /* Live "found so far" feed inside the scan card: the last few stored+scored jobs. */
+  .scan-feed { margin-top: 8px; border-top: 1px solid var(--border); padding-top: 6px;
+               display: flex; flex-direction: column; gap: 2px; }
+  .scan-feed-row { font-size: 12px; color: var(--muted); white-space: nowrap;
+                   overflow: hidden; text-overflow: ellipsis; }
+  .scan-feed-row b { color: var(--accent); }
+  .scan-elapsed { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .scan-track { position: relative; height: 10px; border-radius: 6px;
+    background: rgba(255,255,255,0.06); overflow: hidden; }
+  .scan-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px; min-width: 2px;
+    background: linear-gradient(90deg, var(--accent), #8fa6ff); transition: width .45s ease; }
+  .scan-fill::after { content: ''; position: absolute; inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent);
+    animation: scanshimmer 1.15s linear infinite; }
+  @keyframes scanshimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+  .scan-meta { display: flex; justify-content: space-between; align-items: center;
+    margin-top: 10px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .scan-count b, .scan-pct { color: var(--text); font-weight: 700; }
+  .scan-found { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); font-weight: 700; }
+
+  /* Row-select checkboxes (To Apply tab); the schedule controls live in the Scheduled Runs box */
+  input[type=checkbox].row-select, #select-all { width: 15px; height: 15px; cursor: pointer; accent-color: var(--accent); }
+  .select-cell, .select-head { text-align: center; width: 30px; }
+  .sel-count { font-size: 13px; color: var(--muted); }
+  .sel-count b { color: var(--text); }
+  .sched-btn { background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .sched-btn:hover { background: var(--accent-hover); }
+  .sched-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Schedule modal (reuses the chat-modal backdrop pattern) */
+  #schedule-modal, #uq-settings-modal, #versions-modal { display: none; position: fixed; inset: 0; background: rgba(8,10,15,0.78);
+    align-items: center; justify-content: center; z-index: 60; padding: 20px; }
+  #schedule-modal.show, #uq-settings-modal.show, #versions-modal.show { display: flex; }
+  .sched-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    width: 100%; max-width: 480px; }
+  /* Résumé version history list */
+  #versions-modal .sched-panel { max-width: 620px; }
+  #versions-list { display: flex; flex-direction: column; gap: 8px; max-height: 55vh; overflow-y: auto; }
+  .ver-row { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+    display: flex; align-items: center; gap: 12px; }
+  .ver-row.current { border-color: var(--accent, #4a8); background: rgba(74,168,136,0.08); }
+  .ver-main { flex: 1 1 auto; min-width: 0; }
+  .ver-title { font-weight: 600; }
+  .ver-meta { font-size: 12px; color: var(--muted, #8a93a6); margin-top: 2px; }
+  .ver-actions { display: flex; gap: 6px; flex: 0 0 auto; }
+  .ver-empty { color: var(--muted, #8a93a6); padding: 8px 0; }
+  .sched-body { padding: 6px 18px 18px; }
+  .sched-body label { margin-top: 14px; }
+  .sched-body input[type=datetime-local], .sched-body input[type=number], .sched-body select {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 9px 11px; font-size: 14px; font-family: inherit; }
+  .sched-body input:focus, .sched-body select:focus { outline: none; border-color: var(--accent); }
+  .sched-joblist { max-height: 150px; overflow-y: auto; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin-top: 6px; font-size: 13px; }
+  .sched-joblist .j { padding: 2px 0; color: var(--text); }
+  .sched-foot { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+
+  /* Scheduled-runs panel */
+  .runs-panel { margin-bottom: 22px; }
+  .run-card { background: var(--panel-2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 15px; margin-bottom: 10px; }
+  .run-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .run-when { font-weight: 700; font-size: 14px; }
+  .run-meta { color: var(--muted); font-size: 12px; }
+  .run-badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.4px; }
+  .run-badge.pending { background: #2a2412; color: #e6c46b; border: 1px solid #5c4d24; }
+  .run-badge.running { background: #1d2a40; color: #8fb6ff; border: 1px solid #2f4a72; }
+  .run-badge.done { background: var(--success-bg); color: var(--success-fg); border: 1px solid var(--success-bd); }
+  .run-badge.cancelled { background: var(--error-bg); color: var(--error-fg); border: 1px solid var(--error-bd); }
+  .run-jobs { margin: 9px 0 0; font-size: 12px; color: var(--muted); display: flex; flex-direction: column; gap: 3px; }
+  .run-jobs .jstatus { font-weight: 700; }
+  .run-jobs .jstatus.done { color: var(--success-fg); }
+  .run-jobs .jstatus.error { color: var(--error-fg); }
+  .run-jobs .jstatus.generating { color: #8fb6ff; }
+  .run-jobs .jstatus.closed { color: #e6c46b; }
+  .run-jobs .jstatus.skipped, .run-jobs .jstatus.pending { color: var(--muted); }
+  .run-actions { margin-left: auto; }
+  .awake-note { font-size: 12px; color: #e6c46b; background: #2a2412; border: 1px solid #5c4d24;
+    border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; }
+  /* Editable job rows inside a pending run */
+  .run-job { display: flex; align-items: center; gap: 6px; }
+  .run-jobrm { background: transparent; border: 1px solid #5c2a2a; color: #e08a8a; border-radius: 4px;
+    font-size: 10px; line-height: 1; padding: 2px 5px; cursor: pointer; flex: none; }
+  .run-jobrm:hover { background: #7a2e2e; border-color: #7a2e2e; color: #fff; }
+  /* "Queued"/"Generating" badge shown on the matching row in the MAIN table */
+  .queued-badge { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 700;
+    padding: 2px 8px; border-radius: 5px; background: #2a2412; color: #e6c46b; border: 1px solid #5c4d24; }
+  .queued-badge.generating { background: #1d2a40; color: #8fb6ff; border-color: #2f4a72; }
+  tr.is-queued td { background: rgba(230, 196, 107, 0.06); }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Resume Tailor</h1>
+    <p class="sub">Generate an ATS-optimized resume tailored to a specific job posting.</p>
+
+    <div class="controls-row">
+      <style>
+        /* Give the per-stage LLM box more room than the other equal-share control boxes so
+           its 2x2 grid of dropdowns fits without clipping. */
+        .controls-row > .llm-stages { flex: 2.6; }
+        .llm-stages .llm-stage-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 12px; }
+        .llm-stages .llm-stage { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .llm-stages .llm-stage-name { font-size: 11px; color: var(--muted); font-weight: 600; }
+        .llm-stages select { font-size: 12px; width: 100%; max-width: 100%; }
+      </style>
+      <div class="control-box llm-stages">
+        <span class="control-box-title" title="Pick the LLM backend for every AI step in the app — the four resume-making stages, the base-résumé import, chat, and the job-scan AI Fit verdict.">LLM selection</span>
+        <div class="llm-stage-grid">
+          <label class="llm-stage">
+            <span class="llm-stage-name">Resume stage 1 - Generate draft</span>
+            <select id="llm-generate">
+              <option value="claude">Claude (subscription)</option>
+              <option value="chatgpt">ChatGPT (OpenAI)</option>
+              {{ local_optgroup(local_models) }}
+            </select>
+          </label>
+          <label class="llm-stage">
+            <span class="llm-stage-name">Resume stage 2 - External review (fit)</span>
+            <select id="llm-external">
+              <option value="chatgpt">ChatGPT (OpenAI)</option>
+              <option value="claude">Claude (subscription)</option>
+              <option value="off">Off — skip</option>
+              {{ local_optgroup(local_models) }}
+            </select>
+          </label>
+          <label class="llm-stage">
+            <span class="llm-stage-name">Resume stage 3 - Truthfulness check</span>
+            <select id="llm-check">
+              <option value="claude">Claude (subscription)</option>
+              <option value="chatgpt">ChatGPT (OpenAI)</option>
+              {{ local_optgroup(local_models) }}
+            </select>
+          </label>
+          <label class="llm-stage">
+            <span class="llm-stage-name">Resume stage 4 - Regenerate w/ feedback</span>
+            <select id="llm-regenerate">
+              <option value="claude">Claude (subscription)</option>
+              <option value="chatgpt">ChatGPT (OpenAI)</option>
+              {{ local_optgroup(local_models) }}
+            </select>
+          </label>
+          <label class="llm-stage">
+            <span class="llm-stage-name">Base résumé - Import &amp; Prefill</span>
+            <select id="llm-import">
+              <option value="claude">Claude (subscription)</option>
+              <option value="chatgpt">ChatGPT (OpenAI)</option>
+              {{ local_optgroup(local_models) }}
+            </select>
+          </label>
+          <label class="llm-stage">
+            <span class="llm-stage-name">Chat - Résumé enhancement</span>
+            <select id="llm-chat">
+              <option value="claude">Claude (subscription)</option>
+              <option value="chatgpt">ChatGPT (OpenAI)</option>
+              {{ local_optgroup(local_models) }}
+            </select>
+          </label>
+          <label class="llm-stage">
+            <span class="llm-stage-name">Job scan - AI Fit verdict</span>
+            <select id="llm-fit">
+              <option value="chatgpt">ChatGPT (OpenAI)</option>
+              <option value="claude">Claude (subscription)</option>
+              {{ local_optgroup(local_models) }}
+            </select>
+          </label>
+        </div>
+        <div class="llm-refresh-row" style="display:flex; align-items:center; gap:8px; margin-top:6px;">
+          <button type="button" id="refresh-local-models" class="secondary"
+                  style="font-size:11px; padding:2px 8px;">↻ Refresh local models</button>
+          <span id="local-models-status" style="font-size:11px; color:var(--muted);"></span>
+        </div>
+      </div>
+      <div class="control-box">
+        <span class="control-box-title">Find Jobs Automatically</span>
+        <form method="POST" action="{{ url_for('retrieve_jobs_route') }}" id="jobsform"
+              style="display:flex; flex-direction:column; gap:10px; margin:0;">
+          <input type="hidden" name="llm_fit" value="chatgpt">
+          <div class="board-checklist">
+            {% for s in sources %}
+            <label class="board-check"><input type="checkbox" name="sources" value="{{ s }}" checked> {{ s }}</label>
+            {% endfor %}
+          </div>
+          <div style="display:flex; gap:8px;">
+            <button type="submit" id="jobsbtn">Retrieve Jobs</button>
+            <button type="button" id="fitbtn"
+                    title="Have ChatGPT score ALL stored jobs that don't have an AI Fit score yet, 1-10 against your résumé (can take a while and cost a few dollars when many are unscored)">Score fits (AI)</button>
+          </div>
+        </form>
+      </div>
+      <div class="control-box">
+        <a class="control-box-title" href="{{ url_for('stats_route') }}" title="Open the full stats page">📊 Stats</a>
+        <div class="stats-mini">
+          <div class="stat"><div class="n" id="stat-total">{{ summary.total }}</div><div class="l">Total</div></div>
+          <div class="stat no-resume"><div class="n" id="stat-no-resume">{{ summary.no_resume_yet }}</div><div class="l">No Resume Yet</div></div>
+          <div class="stat"><div class="n" id="stat-resume-made">{{ summary.generated }}</div><div class="l">Resume Made</div></div>
+          <div class="stat applied"><div class="n">{{ summary.applied }}</div><div class="l">Applied</div></div>
+        </div>
+      </div>
+      <div class="control-box">
+        <span class="control-box-title">Tools</span>
+        <div class="control-box-row">
+          <a class="settings-btn" href="{{ url_for('base_resume_route') }}">📄 Base Résumé</a>
+          <a class="settings-btn" href="{{ url_for('settings_route') }}">⚙ Edit Filters</a>
+          <button type="button" class="settings-btn" id="uq-settings-btn"
+                  title="Choose the AI Fit threshold for the Under Qualified tab">⚙ Settings</button>
+          <a class="settings-btn" href="{{ url_for('health_checks_page') }}">🩺 Health Checks</a>
+          {% if developer_options %}<a class="settings-btn" href="{{ url_for('developer_route') }}">🛠 Developer Options</a>{% endif %}
+        </div>
+      </div>
+      <div class="control-box">
+        <span class="control-box-title">Scheduled Runs</span>
+        <div class="control-box-row">
+          <span class="sel-count"><b id="sel-count">0</b> selected</span>
+          <button type="button" id="schedule-btn" class="sched-btn" disabled
+                  title="Tick jobs that need a resume (on the To Apply tab), then schedule a batch to generate at a time you choose (ET).">📅 Schedule selected…</button>
+          <button type="button" id="view-runs-btn" class="settings-btn" title="Show past and upcoming scheduled runs">View runs</button>
+        </div>
+      </div>
+    </div>
+    <div id="jobs-status" class="sub" style="margin:-8px 0 22px;"></div>
+
+    <div id="flash-area">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+    </div>
+
+    <h2>Tracked Jobs &amp; Resumes</h2>
+    {#- Every link below rebuilds the current view (tab, search, sort) and changes ONE
+        part of it, so the table's state survives a click. A new tab/search/sort always
+        returns to page 1 — the old page number would point at unrelated rows. -#}
+    {% macro view_url(tab=None, sort=None, dir=None, page=None) -%}
+      {{ url_for('index',
+                 tab=tab or view.tab,
+                 q=view.company or None,
+                 sort=sort if sort is not none else (view.sort or None),
+                 dir=dir if dir is not none else (view.dir if view.sort else None),
+                 page=page if page and page > 1 else None) }}
+    {%- endmacro %}
+    {#- One sortable column header. Clicking the active column flips its direction. -#}
+    {% macro sort_head(col, label, title='') -%}
+      {% set active = (view.sort == col) %}
+      <th class="sortable{{ ' sorted' if active }}"{% if title %} title="{{ title }}"{% endif %}>
+        <a class="sort-link" href="{{ view_url(sort=col, dir=('desc' if active and view.dir == 'asc' else 'asc')) }}">{{ label }}<span class="sort-arrow">{{ '↑' if active and view.dir == 'asc' else ('↓' if active else '') }}</span></a>
+      </th>
+    {%- endmacro %}
+    {% set has_rows = (view.counts.values() | sum) > 0 or view.company %}
+    {% if has_rows %}
+    <div class="tabs">
+      <a class="tab{{ ' active' if view.tab == 'pending' }}" href="{{ view_url(tab='pending') }}">To Apply <span class="tab-count" id="count-pending">{{ view.counts.pending }}</span></a>
+      <a class="tab{{ ' active' if view.tab == 'underqualified' }}" href="{{ view_url(tab='underqualified') }}">Under Qualified <span class="tab-count" id="count-underqualified">{{ view.counts.underqualified }}</span></a>
+      <a class="tab{{ ' active' if view.tab == 'applied' }}" href="{{ view_url(tab='applied') }}">Applied <span class="tab-count" id="count-applied">{{ view.counts.applied }}</span></a>
+      <a class="tab{{ ' active' if view.tab == 'manual' }}" href="{{ view_url(tab='manual') }}">Manual <span class="tab-count" id="count-manual">{{ view.counts.manual }}</span></a>
+    </div>
+
+    <div id="manual-entry" class="panel" style="display:{{ '' if view.tab == 'manual' else 'none' }}; margin-bottom:18px;">
+      <h2 style="margin:0 0 4px;">Add a job manually</h2>
+      <p class="sub" style="margin:0 0 14px;">Enter the company, role, and job URL — the job is added to your list right away. Generate its tailored resume later from the list.</p>
+      <form method="POST" action="{{ url_for('add_job_route') }}" id="manualform">
+        <div class="row">
+          <div><label>Company</label><input type="text" name="company" placeholder="TD Bank" required></div>
+          <div><label>Role</label><input type="text" name="role" placeholder="Director, Technical Learning" required></div>
+        </div>
+        <label>Job posting URL <span class="hint">— LinkedIn, Greenhouse, company careers page…</span></label>
+        <input type="text" name="job_url" placeholder="https://...">
+        <div class="or">— or —</div>
+        <label>Paste job description <span class="hint">— if you don't have a URL</span></label>
+        <textarea name="job_text" placeholder="Paste the full job description here..."></textarea>
+        <button type="submit" id="manualbtn">Add job</button>
+        <span id="manual-status" class="genjob-status" style="margin-left:10px;"></span>
+      </form>
+    </div>
+    <div id="runs-panel" class="runs-panel" style="display:none;"></div>
+
+    <table class="{{ 'show-delete' if view.tab in ('pending', 'underqualified') }}">
+      <thead>
+        <tr>
+          <th class="select-head"><input type="checkbox" id="select-all" title="Select all visible jobs that need a resume"></th>
+          {{ sort_head('ai_fit', 'AI Fit', "ChatGPT's 1-10 fit verdict against your résumé — hover a score for its one-line reason") }}
+          {{ sort_head('source', 'Source') }}
+          {{ sort_head('date_matched', 'Date Found') }}
+          {{ sort_head('date_posted', 'Date Posted') }}
+          <th class="sortable has-search{{ ' sorted' if view.sort == 'company' }}">
+            <a class="sort-link th-label" href="{{ view_url(sort='company', dir=('desc' if view.sort == 'company' and view.dir == 'asc' else 'asc')) }}">Company<span class="sort-arrow">{{ '↑' if view.sort == 'company' and view.dir == 'asc' else ('↓' if view.sort == 'company' else '') }}</span></a>
+            {#- The search is a real form submit: the filter runs in SQL now, so it has to
+                reach the server rather than hide rows the page never received. -#}
+            <form class="col-search" method="GET" action="{{ url_for('index') }}">
+              <input type="hidden" name="tab" value="{{ view.tab }}">
+              {% if view.sort %}<input type="hidden" name="sort" value="{{ view.sort }}"><input type="hidden" name="dir" value="{{ view.dir }}">{% endif %}
+              <input type="text" id="company-search" name="q" value="{{ view.company }}" placeholder="Filter…" autocomplete="off">
+              {% if view.company %}<a class="col-search-clear" href="{{ url_for('index', tab=view.tab) }}" title="Clear filter" aria-label="Clear filter">✕</a>{% endif %}
+            </form>
+          </th>
+          {{ sort_head('role', 'Role') }}
+          {{ sort_head('location', 'Location') }}
+          <th>Posting</th><th>Status</th><th class="action-head">Delete</th>
+          <th class="action-head action-group-start">Resume</th><th class="action-head">Match</th>
+          <th class="action-head">Chat</th><th class="action-head">Email</th>
+          {{ sort_head('applied', 'Applied') }}
+        </tr>
+      </thead>
+      <tbody>
+        {% for app in applications %}
+        {# The row markup lives in _job_row.html so GET /job-row/<id> can render ONE
+           row for the live scan feed to insert without a page reload. #}
+        {% include '_job_row.html' %}
+        {% else %}
+        <tr id="empty-tab-row"><td colspan="16" class="empty" style="text-align:center;">
+          {% if view.company %}No companies match “{{ view.company }}”.{% else %}No jobs in this tab.{% endif %}
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {#- The pager. Only the current page's rows were ever sent to the browser, so moving
+        between pages is a real request. -#}
+    {% if view.pages > 1 %}
+    <div class="pager">
+      <a class="page-btn{{ ' disabled' if view.page <= 1 }}" href="{{ view_url(page=view.page - 1) }}">← Previous</a>
+      <span class="page-status">
+        Page {{ view.page }} of {{ view.pages }}
+        <span class="hint">({{ view.total }} job{{ '' if view.total == 1 else 's' }} in this tab)</span>
+      </span>
+      <a class="page-btn{{ ' disabled' if view.page >= view.pages }}" href="{{ view_url(page=view.page + 1) }}">Next →</a>
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="empty">No jobs tracked yet. Generate a resume above, or click <strong>Retrieve Jobs</strong> to find matches.</p>
+    {% endif %}
+  </div>
+
+
+  <div id="schedule-modal">
+    <div class="sched-panel">
+      <div class="chat-head">
+        <div><strong>Schedule resume generation</strong>
+          <div id="sched-sub" class="sub" style="margin:2px 0 0;"></div></div>
+        <button id="sched-close" class="apply-btn" title="Close">✕</button>
+      </div>
+      <div class="sched-body">
+        <label for="sched-when">When <span class="hint">— Eastern Time (ET)</span></label>
+        <input type="datetime-local" id="sched-when">
+        <p class="hint" style="margin:10px 0 0;">Uses the four resume-stage LLMs from the
+          “LLM selection” section at the top of the page.</p>
+        <label style="margin-top:14px;">Jobs in this batch</label>
+        <div id="sched-joblist" class="sched-joblist"></div>
+        <p class="hint" style="margin:10px 0 0;">The app must be running at that time. Reload the page
+          after a run finishes to see the generated resumes.</p>
+        <div class="sched-foot">
+          <button type="button" id="sched-cancel" class="apply-btn">Cancel</button>
+          <button type="button" id="sched-submit" class="sched-btn">Schedule</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="chat-modal">
+    <div class="chat-panel">
+      <div class="chat-head">
+        <div><strong id="chat-title">Improve match</strong><div id="chat-sub" class="sub" style="margin:2px 0 0;"></div></div>
+        <button id="chat-close" class="apply-btn" title="Close">✕</button>
+      </div>
+      <div id="chat-messages" class="chat-messages"></div>
+      <div class="chat-input-row">
+        <textarea id="chat-input" placeholder="Tell me about real experience you have to add, or ask a question…"></textarea>
+        <button id="chat-send" class="apply-btn">Send</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="uq-settings-modal">
+    <div class="sched-panel">
+      <div class="chat-head">
+        <div><strong>Under Qualified settings</strong>
+          <div class="sub" style="margin:2px 0 0;">Which jobs land in the “Under Qualified” tab.</div></div>
+        <button id="uq-close" class="apply-btn" title="Close">✕</button>
+      </div>
+      <div class="sched-body">
+        <label for="uq-threshold">AI Fit threshold <span class="hint">— a whole number, 1 to 10</span></label>
+        <input type="number" id="uq-threshold" min="1" max="10" step="1">
+        {#- The real submission: the threshold decides which tab each job is in, and that
+            split runs in SQL, so saving it re-renders the page. -#}
+        <form id="uq-form" method="POST" action="{{ url_for('underqualified_threshold_route') }}">
+          <input type="hidden" name="threshold" id="uq-value">
+          <input type="hidden" name="tab" value="{{ view.tab }}">
+        </form>
+        <p class="hint" style="margin:10px 0 0;">Jobs whose AI Fit is at or below this score show in the
+          “Under Qualified” tab and are kept out of “To Apply”. Unscored jobs stay in “To Apply”.</p>
+        <div class="sched-foot">
+          <button type="button" id="uq-cancel" class="apply-btn">Cancel</button>
+          <button type="button" id="uq-save" class="sched-btn">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="versions-modal">
+    <div class="sched-panel">
+      <div class="chat-head">
+        <div><strong id="versions-title">Résumé history</strong>
+          <div id="versions-sub" class="sub" style="margin:2px 0 0;"></div></div>
+        <button id="versions-close" class="apply-btn" title="Close">✕</button>
+      </div>
+      <div class="sched-body">
+        <p class="hint" style="margin:0 0 10px;">Each time this résumé is regenerated, the previous
+          version is saved here. Preview or download an old one, or restore it to make it current
+          again — restoring saves your current version to history first, so nothing is ever lost.</p>
+        <div id="versions-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Which slice of the jobs table this page is showing. The server decided all of it
+    // (tab, company search, sort, page) and sent only those rows; the values are here so
+    // the few bits of live behaviour left — the scan feed, the delete badge — know what
+    // they're looking at.
+    var activeTab = {{ view.tab | tojson }};
+    var pageIsFiltered = {{ (view.company != '' or view.page > 1 or view.sort != None) | tojson }};
+
+    // Per-stage LLM pickers. Each of the four resume-making steps has its own <select>; we
+    // remember each choice across reloads and submit all four with every generation request.
+    var LLM_STAGES = { generate: 'llm-generate', external: 'llm-external',
+                       check: 'llm-check', regenerate: 'llm-regenerate' };
+    // All seven LLM <select> ids (the four stages + three standalone pickers).
+    var ALL_LLM_SELECTS = ['llm-generate', 'llm-external', 'llm-check', 'llm-regenerate',
+                           'llm-import', 'llm-chat', 'llm-fit'];
+    // localStorage key per select id.
+    var LLM_SELECT_STORE = { 'llm-generate': 'resumeLlmGenerate', 'llm-external': 'resumeLlmExternal',
+                             'llm-check': 'resumeLlmCheck', 'llm-regenerate': 'resumeLlmRegenerate',
+                             'llm-import': 'resumeLlmImport', 'llm-chat': 'resumeLlmChat',
+                             'llm-fit': 'resumeLlmFit' };
+    // Mirror of tailoring.LEGACY_LOCAL_ALIASES: migrate an old saved nickname to local:<tag>.
+    var LEGACY_LOCAL = { local_qwen: 'qwen3.6:27b', local_gptoss: 'gpt-oss:20b',
+                         local_mistral: 'mistral-small3.1:24b' };
+    function migrateSaved(v) {
+      if (!v || v.indexOf('local:') === 0) return v;
+      if (LEGACY_LOCAL[v]) return 'local:' + LEGACY_LOCAL[v];
+      return v;
+    }
+    // Set a select to `val`, appending a marked option if `val` isn't among its options
+    // (e.g. a saved pick whose model was deleted) so nothing changes silently.
+    function setSelectValue(el, val) {
+      if (!val) return;
+      var has = Array.prototype.some.call(el.options, function (o) { return o.value === val; });
+      if (!has) {
+        var o = document.createElement('option');
+        o.value = val;
+        o.textContent = (val.indexOf('local:') === 0 ? 'Local — ' + val.slice(6) : val) + ' (not found)';
+        el.appendChild(o);
+      }
+      el.value = val;
+    }
+    // Restore each select from localStorage (migrating legacy values) and persist on change.
+    ALL_LLM_SELECTS.forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var saved = migrateSaved(localStorage.getItem(LLM_SELECT_STORE[id]));
+      if (saved) setSelectValue(el, saved);
+      el.addEventListener('change', function () {
+        localStorage.setItem(LLM_SELECT_STORE[id], el.value);
+      });
+    });
+    // Refresh button: re-query the server, rebuild every select's Local optgroup, keep selections.
+    (function () {
+      var btn = document.getElementById('refresh-local-models');
+      var status = document.getElementById('local-models-status');
+      if (!btn) return;
+      btn.addEventListener('click', function () {
+        status.textContent = 'Checking…';
+        fetch('/local-models?refresh=1').then(function (r) { return r.json(); }).then(function (data) {
+          var models = data.models || [];
+          ALL_LLM_SELECTS.forEach(function (id) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            var current = el.value;
+            // Drop any existing Local optgroup and stray local: options.
+            Array.prototype.slice.call(el.querySelectorAll('optgroup')).forEach(function (g) {
+              if (g.label === 'Local (Ollama)') g.remove();
+            });
+            Array.prototype.slice.call(el.querySelectorAll('option')).forEach(function (o) {
+              if (o.value.indexOf('local:') === 0) o.remove();
+            });
+            if (models.length) {
+              var g = document.createElement('optgroup');
+              g.label = 'Local (Ollama)';
+              models.forEach(function (tag) {
+                var o = document.createElement('option');
+                o.value = 'local:' + tag;
+                o.textContent = 'Local — ' + tag;
+                g.appendChild(o);
+              });
+              el.appendChild(g);
+            }
+            setSelectValue(el, current);   // re-select prior choice (marks it if now missing)
+          });
+          status.textContent = data.error ? data.error : ('Found ' + models.length + ' model' + (models.length === 1 ? '' : 's'));
+        }).catch(function (e) {
+          status.textContent = 'Refresh failed: ' + e;
+        });
+      });
+    })();
+    function chosenLlms() {
+      var o = {};
+      Object.keys(LLM_STAGES).forEach(function (stage) {
+        var el = document.getElementById(LLM_STAGES[stage]);
+        o[stage] = el ? el.value : 'claude';
+      });
+      return o;
+    }
+    // Append the four per-stage backends to a FormData for a generation POST.
+    function appendLlms(body) {
+      var o = chosenLlms();
+      body.append('llm_generate', o.generate);
+      body.append('llm_external', o.external);
+      body.append('llm_check', o.check);
+      body.append('llm_regenerate', o.regenerate);
+    }
+
+    // Retrieve Jobs: the scan runs on a background THREAD server-side; the browser just
+    // kicks it off and then polls /retrieve-status. This means a long scan (all boards
+    // can take minutes) no longer depends on one long-lived fetch connection that the
+    // browser/dev-server could drop ("Failed to fetch").
+    var retrievePoll = null;
+    function escHtml(t) {
+      var d = document.createElement('div'); d.textContent = t == null ? '' : t;
+      return d.innerHTML;
+    }
+    function scanCard(s) {
+      var total = s.total || 0, done = s.done_count || 0;
+      var pct = total ? Math.min(100, Math.round(done / total * 100)) : (s.stage ? 4 : 0);
+      // ONE interleaved stage: each board's jobs go through the whole pipeline (title
+      // sieve → deep screen → store with description → embed → AI-score) before the
+      // next board. Progress counts BOARDS done; ★ counts real stored matches.
+      var label = 'Scanning boards — screening & AI-scoring as it goes', unit = 'boards';
+      var elapsed = s.elapsed != null ? s.elapsed + 's' : '';
+      var counts = total
+        ? '<b>' + done.toLocaleString() + '</b> / ' + total.toLocaleString() + ' ' + unit
+        : 'starting…';
+      // Live feed: the last few jobs that were stored (and scored), newest first, so
+      // finds are visible the moment they land — no waiting for the scan to end.
+      var feed = '';
+      if (s.recent && s.recent.length) {
+        feed = '<div class="scan-feed">' + s.recent.map(function (j) {
+          var score = (j.score != null) ? '<b>' + j.score + '/10</b>' : '·';
+          var tag = j.new ? '' : ' <span class="muted">(updated)</span>';
+          return '<div class="scan-feed-row">' + score + ' ' +
+                 escHtml(j.company) + ' — ' + escHtml(j.role) + tag + '</div>';
+        }).join('') + '</div>';
+      }
+      return '<div class="scan-card">' +
+          '<div class="scan-head">' +
+            '<span class="scan-radar"></span>' +
+            '<span class="scan-stage">' + label + '</span>' +
+            '<span class="scan-elapsed">' + elapsed + '</span>' +
+          '</div>' +
+          '<div class="scan-track"><div class="scan-fill" style="width:' + pct + '%"></div></div>' +
+          '<div class="scan-meta">' +
+            '<span class="scan-count">' + counts + '</span>' +
+            '<span class="scan-pct">' + pct + '%</span>' +
+            '<span class="scan-found">★ ' + (s.found || 0) + ' found</span>' +
+          '</div>' + feed +
+        '</div>';
+    }
+    // Wire up the interactive bits of ONE table row (the same bindings the page does
+    // for server-rendered rows at load time). Used for rows inserted live mid-scan.
+    function wireRow(tr) {
+      var cb = tr.querySelector('.row-select');
+      if (cb) cb.addEventListener('change', updateSelectionUI);
+      var gf = tr.querySelector('.genjob-form');
+      if (gf) gf.addEventListener('submit', genjobSubmit);
+      var del = tr.querySelector('.delete-btn');
+      if (del) del.addEventListener('click', function () { deleteRow(del); });
+      var chat = tr.querySelector('.chat-btn');
+      if (chat) attachChat(chat);
+      attachResumeCellHandlers(tr);   // regen/rewrite forms, when a resume exists
+    }
+    // Insert newly-found scan jobs into the table WITHOUT a page reload: for each feed
+    // entry not yet in the table, fetch its server-rendered row (/job-row/<id> — same
+    // markup as a normal row), add it at the top, wire its buttons, and let the active
+    // tab/company filters decide its visibility.
+    var liveRowIds = null;                             // job ids already in the table
+    function insertLiveRows(recent) {
+      var tbody = document.querySelector('table tbody');
+      if (!tbody || !recent || !recent.length) return;
+      // A find lands in "To Apply"; on any other tab (or a filtered/paged view) it has no
+      // place in the rows the server sent, so leave the table alone — the page reloads
+      // when the scan finishes anyway.
+      if (activeTab !== 'pending' || pageIsFiltered) return;
+      if (liveRowIds === null) {
+        liveRowIds = {};
+        tbody.querySelectorAll('tr[data-job-id]').forEach(function (tr) {
+          liveRowIds[tr.dataset.jobId] = true;
+        });
+      }
+      recent.forEach(function (j) {
+        if (!j.job_id || liveRowIds[j.job_id]) return;
+        liveRowIds[j.job_id] = true;                   // claim BEFORE the async fetch
+        fetch('/job-row/' + encodeURIComponent(j.job_id))
+          .then(function (r) { return r.ok ? r.text() : ''; })
+          .then(function (html) {
+            if (!html) return;
+            var tmp = document.createElement('tbody');
+            tmp.innerHTML = html;
+            var tr = tmp.querySelector('tr');
+            if (!tr) return;
+            var empty = document.getElementById('empty-tab-row');
+            if (empty) empty.remove();                 // the tab isn't empty any more
+            tbody.insertBefore(tr, tbody.firstChild);
+            wireRow(tr);
+          })
+          .catch(function () { delete liveRowIds[j.job_id]; });  // retry on a later poll
+      });
+    }
+    function pollRetrieve() {
+      var btn = document.getElementById('jobsbtn');
+      var status = document.getElementById('jobs-status');
+      fetch('/retrieve-status')
+        .then(function (r) { return r.json(); })
+        .then(function (s) {
+          if (s.running) {
+            status.innerHTML = scanCard(s);
+            insertLiveRows(s.recent);                  // new finds → table rows, live
+            return;  // keep polling
+          }
+          // Finished.
+          clearInterval(retrievePoll); retrievePoll = null;
+          btn.disabled = false;
+          if (s.done && s.ok) {
+            status.innerHTML = '✓ ' + s.message +
+              ' <a href="' + window.location.pathname + '" style="color:var(--accent);">Show new jobs →</a>';
+            // Refresh the job list so the finds (and their AI Fit scores) appear right
+            // away — unless a dialog is open (don't yank the page out from under it).
+            // The message survives the reload via sessionStorage → shown as a flash.
+            if (!document.querySelector('#chat-modal.show, #schedule-modal.show, #uq-settings-modal.show, #versions-modal.show')) {
+              try { sessionStorage.setItem('scanFlash', s.message); } catch (e) {}
+              setTimeout(function () { window.location.reload(); }, 1200);
+            }
+          } else if (s.done) {
+            status.textContent = '';
+            showFlash(s.message || 'Retrieve failed.', 'error');
+          }
+        })
+        .catch(function () { /* transient network blip — keep polling, don't error out */ });
+    }
+    // Kick off a scan. allowNoAudit=true is the re-submit after the user confirmed they
+    // want to run despite an unwritable logs/ dir (the audit log will be skipped).
+    function startScan(allowNoAudit) {
+      var form = document.getElementById('jobsform');
+      var btn = document.getElementById('jobsbtn');
+      var status = document.getElementById('jobs-status');
+      var fitSel = document.getElementById('llm-fit');
+      if (fitSel) form.querySelector('input[name="llm_fit"]').value = fitSel.value;
+      var fd = new FormData(form);
+      if (allowNoAudit) fd.append('allow_no_audit', '1');
+      btn.disabled = true;
+      status.innerHTML = '<span class="inline-spinner"></span>Starting scan…';
+      fetch(form.action, { method: 'POST', body: fd })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.needs_confirm) {      // logs/ not writable — ask before running without it
+            btn.disabled = false; status.textContent = '';
+            if (window.confirm(data.message)) startScan(true);
+            return;
+          }
+          if (data.ok === false) {       // bad input (e.g. non-numeric limit)
+            btn.disabled = false; status.textContent = '';
+            showFlash(data.message, 'error');
+            return;
+          }
+          if (retrievePoll) clearInterval(retrievePoll);
+          retrievePoll = setInterval(pollRetrieve, 3000);
+          pollRetrieve();
+        })
+        .catch(function (err) {
+          btn.disabled = false; status.textContent = '';
+          showFlash('Could not start scan: ' + err, 'error');
+        });
+    }
+    document.getElementById('jobsform').addEventListener('submit', function (e) {
+      e.preventDefault();
+      startScan(false);
+    });
+    // If a scan is already running (e.g. page was reloaded mid-scan), resume polling.
+    (function () {
+      var btn = document.getElementById('jobsbtn');
+      if (!btn) return;
+      fetch('/retrieve-status').then(function (r) { return r.json(); }).then(function (s) {
+        if (s.running) { btn.disabled = true; retrievePoll = setInterval(pollRetrieve, 3000); pollRetrieve(); }
+      }).catch(function () {});
+    })();
+    // "Score fits (AI)": backfill ChatGPT fit scores for stored jobs that lack one.
+    // Runs as a background task server-side; poll /generate-status until it finishes.
+    (function () {
+      var fitBtn = document.getElementById('fitbtn');
+      if (!fitBtn) return;
+      fitBtn.addEventListener('click', function () {
+        var status = document.getElementById('jobs-status');
+        fitBtn.disabled = true;
+        status.innerHTML = '<span class="inline-spinner"></span>AI-scoring stored jobs…';
+        var fd = new FormData();
+        var fitSel = document.getElementById('llm-fit');
+        fd.append('llm_fit', fitSel ? fitSel.value : 'chatgpt');
+        fetch('/fit-verdicts', { method: 'POST', body: fd })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            if (!data.ok) {
+              fitBtn.disabled = false; status.textContent = '';
+              showFlash(data.message || 'Could not start scoring.', 'error');
+              return;
+            }
+            var poll = setInterval(function () {
+              fetch('/generate-status?task_id=' + encodeURIComponent(data.task_id))
+                .then(function (r) { return r.json(); })
+                .then(function (s) {
+                  if (!s.done) return;                 // still working — keep polling
+                  clearInterval(poll);
+                  fitBtn.disabled = false;
+                  var msg = (s.result && s.result.message) || 'Done.';
+                  status.innerHTML = '✓ ' + msg +
+                    ' <a href="' + window.location.pathname + '" style="color:var(--accent);">Refresh →</a>';
+                })
+                .catch(function () { /* transient blip — keep polling */ });
+            }, 3000);
+          })
+          .catch(function (err) {
+            fitBtn.disabled = false; status.textContent = '';
+            showFlash('Could not start scoring: ' + err, 'error');
+          });
+      });
+    })();
+    // Per-row resume generation: background request + inline spinner, NO page freeze.
+    function escapeAttr(s) {
+      return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    // Build a /files/ URL from a path that may include a dated sub-folder (e.g.
+    // "20260626/acme_resume.pdf"). Encode each segment but KEEP the slashes so Flask's
+    // <path:filename> route matches (encodeURIComponent alone would turn "/" into %2F).
+    function fileUrl(rel) {
+      return '/files/' + String(rel).split('/').map(encodeURIComponent).join('/');
+    }
+    function buildEmailForm(company, role) {
+      return '<form method="POST" action="/update-email" class="email-form">' +
+        '<input type="hidden" name="company" value="' + escapeAttr(company) + '">' +
+        '<input type="hidden" name="role" value="' + escapeAttr(role) + '">' +
+        '<input type="email" name="email" class="email-input" placeholder="you@example.com" required>' +
+        '<button type="submit" class="apply-btn" title="Edit this resume email (no AI used)">Set</button></form>';
+    }
+    // Rebuild the Match cell's score + its hover tooltip (the critic's findings). After an
+    // async (re)generation we replace the cell contents, so we recreate the same structure the
+    // server-rendered template uses: a .match-wrap holding the score and a nested .match-tip
+    // (the real, hoverable/scrollable tooltip). tip text goes in via textContent so a long
+    // report with special characters can't break the markup; CSS pre-line keeps its newlines.
+    // The server sends `match_tip` (empty/absent = no findings, so no tooltip).
+    function renderMatchCell(matchCell, tip) {
+      var wrap = matchCell.querySelector('.match-wrap');
+      if (!wrap) return;                                  // score not rebuilt (shouldn't happen)
+      var existing = wrap.querySelector('.match-tip');
+      if (existing) existing.remove();
+      if (tip) {
+        var t = document.createElement('span');
+        t.className = 'match-tip';
+        t.setAttribute('role', 'tooltip');
+        t.textContent = tip;
+        wrap.appendChild(t);
+      }
+    }
+    // Build BOTH regenerate forms for a résumé cell: "↻ From JSON" (re-render the saved JSON +
+    // re-score, no rewrite) and "✎ With LLM" (full AI rewrite using the top-of-page LLMs).
+    function buildRegenForms(company, role, jobId) {
+      var c = escapeAttr(company), r = escapeAttr(role), j = escapeAttr(jobId || '');
+      return '<form method="POST" action="/regenerate-resume" class="regen-form">' +
+        '<input type="hidden" name="company" value="' + c + '">' +
+        '<input type="hidden" name="role" value="' + r + '">' +
+        '<input type="hidden" name="job_id" value="' + j + '">' +
+        '<button type="submit" class="apply-btn regen-btn" title="Re-render the PDF from the saved JSON and re-score — no AI rewrite">↻ From JSON</button></form>' +
+        '<form method="POST" action="/rewrite-resume" class="rewrite-form">' +
+        '<input type="hidden" name="company" value="' + c + '">' +
+        '<input type="hidden" name="role" value="' + r + '">' +
+        '<input type="hidden" name="job_id" value="' + j + '">' +
+        '<button type="submit" class="apply-btn rewrite-btn" title="Full AI rewrite using the LLMs chosen at the top of the page (uses credits)">✎ With LLM</button></form>';
+    }
+    // The "🕑 History" button for a résumé cell — opens the previous-versions modal.
+    function buildHistoryButton(company, role, jobId) {
+      return '<button type="button" class="apply-btn versions-btn" data-job-id="' +
+        escapeAttr(jobId || '') + '" data-company="' + escapeAttr(company) + '" data-role="' +
+        escapeAttr(role) + '" title="See and restore previous versions of this résumé">🕑 History</button>';
+    }
+    // The "⇄ Compare" link for a résumé cell — opens the base-vs-tailored diff in a new tab.
+    function buildCompareLink(company, role) {
+      return '<a class="apply-btn" target="_blank" href="/resume-diff?company=' +
+        encodeURIComponent(company) + '&role=' + encodeURIComponent(role) +
+        '" title="Compare this tailored résumé against your base résumé, side by side">⇄ Compare</a>';
+    }
+    // The full résumé cell after a successful (re)generation: HTML/PDF links on top, then the
+    // manage buttons as a horizontal toolbar underneath (matches the server-rendered markup).
+    function buildResumeCell(company, role, jobId, html, pdf) {
+      return '<div class="resume-links">' +
+        '<a href="' + fileUrl(html) + '" target="_blank">HTML</a>' +
+        '<a href="' + fileUrl(pdf) + '?download=1">PDF ↓</a></div>' +
+        '<div class="resume-actions">' +
+        buildRegenForms(company, role, jobId) +
+        buildHistoryButton(company, role, jobId) +
+        buildCompareLink(company, role) +
+        '</div>';
+    }
+    // Wire up the handlers on a freshly-rebuilt résumé cell (both regen buttons + History).
+    function attachResumeCellHandlers(cell) {
+      var rf = cell.querySelector('.regen-form'); if (rf) rf.addEventListener('submit', regenSubmit);
+      var wf = cell.querySelector('.rewrite-form'); if (wf) wf.addEventListener('submit', rewriteSubmit);
+      var vb = cell.querySelector('.versions-btn'); if (vb) vb.addEventListener('click', function () { openVersions(vb); });
+    }
+    function showFlash(message, category) {
+      var area = document.getElementById('flash-area');
+      var div = document.createElement('div');
+      div.className = 'flash ' + (category || 'success');
+      div.textContent = message;
+      area.appendChild(div);
+      div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    // A finished scan reloads the page so the new jobs appear in the list — re-show its
+    // completion message (stashed in sessionStorage just before the reload) as a flash.
+    (function () {
+      try {
+        var msg = sessionStorage.getItem('scanFlash');
+        if (msg) { sessionStorage.removeItem('scanFlash'); showFlash('✓ ' + msg, 'success'); }
+      } catch (e) {}
+    })();
+    // Poll a background generation (started by /generate-for-job or /generate) until it
+    // finishes, then hand its result to `onResult`. This is what makes generation immune to
+    // the browser dropping the long request: the work runs server-side and we just check on
+    // it every few seconds. Transient poll errors are ignored (keep waiting); a hard cap
+    // stops runaway polling if something goes badly wrong.
+    function pollGeneration(taskId, onResult, onProgress) {
+      // ~6h10m at 3s/poll — deliberately longer than the server's 6-hour watchdog
+      // (GEN_TASK_TIMEOUT_SEC) so the server returns a definitive "abandoned" result first;
+      // this is just a last-resort cap. All-local runs on slow home hardware can take hours.
+      var tries = 0, MAX_TRIES = 7400;
+      var timer = setInterval(function () {
+        tries++;
+        fetch('/generate-status?task_id=' + encodeURIComponent(taskId))
+          .then(function (r) { return r.json(); })
+          .then(function (s) {
+            if (!s.done) {
+              // Surface the pipeline's latest stage so the spinner shows real progress
+              // (e.g. "Pass 2 — refining (attempt 2/3)…") instead of a frozen label.
+              if (onProgress && s.progress) onProgress(s.progress);
+              if (tries >= MAX_TRIES) {
+                clearInterval(timer);
+                onResult({ ok: false, category: 'error',
+                  message: 'Generation is taking unusually long. It may still finish — refresh the page in a bit.' });
+              }
+              return;                                // still running — keep polling
+            }
+            clearInterval(timer);
+            onResult(s.result);
+          })
+          .catch(function () { /* transient network blip — keep polling */ });
+      }, 3000);
+    }
+    // Update an inline spinner's status label with the pipeline's latest stage message.
+    // `cell` is the element holding the `.genjob-status` span the spinner rendered.
+    function spinnerProgress(cell) {
+      return function (msg) {
+        var s = cell.querySelector('.genjob-status');
+        if (s && msg) s.textContent = msg;
+      };
+    }
+    function genjobSubmit(e) {
+      e.preventDefault();                          // don't reload the page
+      var form = e.currentTarget;
+      var row = form.closest('tr');
+      var resumeCell = form.closest('td');
+      var statusCell = row.querySelector('.status-cell');
+      var emailCell = row.querySelector('.email-cell');
+      var jobId = form.querySelector('input[name=job_id]').value;
+      var action = form.action;
+      var body = new FormData();
+      body.append('job_id', jobId);
+      appendLlms(body);
+      resumeCell.innerHTML = '<span class="inline-spinner"></span><span class="genjob-status">generating…</span>';
+      // Restore the "Generate Resume" button (used on a failed/aborted generation).
+      function restoreButton() {
+        resumeCell.innerHTML =
+          '<form method="POST" action="' + action + '" class="genjob-form" style="margin:0;">' +
+          '<input type="hidden" name="job_id" value="' + jobId + '">' +
+          '<button type="submit" class="apply-btn genjob-btn">Generate Resume</button></form>';
+        resumeCell.querySelector('.genjob-form').addEventListener('submit', genjobSubmit);
+      }
+      // Apply the finished generation result to this row (same handling as before).
+      function applyResult(data) {
+        if (data.ok) {
+          resumeCell.innerHTML = buildResumeCell(data.company, data.role, data.job_id || jobId, data.html, data.pdf);
+          attachResumeCellHandlers(resumeCell);
+          if (statusCell) {
+            var g = statusCell.querySelector('[data-step="generated"]');
+            if (g) { g.classList.add('on'); g.textContent = '✓ Generated'; }
+          }
+          var matchCell = row.querySelector('.match-cell');
+          if (matchCell && data.match_score != null) {
+            matchCell.innerHTML = '<span class="match-wrap"><span class="match-score">' + data.match_score + '<span class="match-of">/10</span></span></span>';
+            renderMatchCell(matchCell, data.match_tip);
+          }
+          if (emailCell) emailCell.innerHTML = buildEmailForm(data.company, data.role);
+          var chatCell = row.querySelector('.chat-cell');
+          if (chatCell) {
+            var cb = document.createElement('button');
+            cb.className = 'apply-btn chat-btn';
+            cb.dataset.jobId = data.job_id; cb.dataset.company = data.company; cb.dataset.role = data.role;
+            cb.textContent = '💬 Chat';
+            cb.addEventListener('click', function () { openChat(cb); });
+            chatCell.innerHTML = ''; chatCell.appendChild(cb);
+          }
+        } else {
+          restoreButton();
+        }
+        showFlash(data.message, data.category);
+      }
+      // Kick off the background generation, then poll for its result.
+      fetch(action, { method: 'POST', body: body })
+        .then(function (r) { return r.json(); })
+        .then(function (start) {
+          if (!start.ok || !start.task_id) {         // couldn't even start the job
+            restoreButton();
+            showFlash((start && start.message) || 'Could not start generation.', (start && start.category) || 'error');
+            return;
+          }
+          pollGeneration(start.task_id, applyResult, spinnerProgress(resumeCell));
+        })
+        .catch(function (err) {
+          restoreButton();
+          showFlash('Generation request failed: ' + err, 'error');
+        });
+    }
+    document.querySelectorAll('.genjob-form').forEach(function (f) {
+      f.addEventListener('submit', genjobSubmit);
+    });
+
+    // Reusable: run a full-cell resume (re)generation with an inline spinner + polling, and
+    // restore the cell's PREVIOUS contents on failure (so a failed regen/rewrite never wipes
+    // the existing HTML/PDF links). `spinnerText` labels the spinner; `body` is the POST body.
+    function runResumeAction(resumeCell, action, body, spinnerText, extra) {
+      var row = resumeCell.closest('tr');
+      var emailCell = row.querySelector('.email-cell');
+      var matchCell = row.querySelector('.match-cell');
+      var prevHTML = resumeCell.innerHTML;             // snapshot to restore if it fails
+      resumeCell.innerHTML = '<span class="inline-spinner"></span><span class="genjob-status">' + spinnerText + '</span>';
+      function restorePrev() { resumeCell.innerHTML = prevHTML; attachResumeCellHandlers(resumeCell); }
+      function applyResult(data) {
+        if (data.ok) {
+          resumeCell.innerHTML = buildResumeCell(data.company, data.role,
+            (extra && extra.jobId) || data.job_id || '', data.html, data.pdf);
+          attachResumeCellHandlers(resumeCell);
+          if (matchCell && data.match_score != null) {
+            matchCell.innerHTML = '<span class="match-wrap"><span class="match-score">' + data.match_score + '<span class="match-of">/10</span></span></span>';
+            renderMatchCell(matchCell, data.match_tip);
+          }
+          if (emailCell) emailCell.innerHTML = buildEmailForm(data.company, data.role);
+        } else {
+          restorePrev();
+        }
+        showFlash(data.message, data.category);
+      }
+      fetch(action, { method: 'POST', body: body })
+        .then(function (r) { return r.json(); })
+        .then(function (start) {
+          if (!start.ok || !start.task_id) {           // synchronous validation error
+            applyResult(start || { ok: false, message: 'Could not start.', category: 'error' });
+            return;
+          }
+          pollGeneration(start.task_id, applyResult, spinnerProgress(resumeCell));
+        })
+        .catch(function (err) { restorePrev(); showFlash('Request failed: ' + err, 'error'); });
+    }
+
+    // "↻ From JSON": re-render the PDF from the saved JSON and re-score — NO AI rewrite.
+    function regenSubmit(e) {
+      e.preventDefault();
+      var form = e.currentTarget;
+      var resumeCell = form.closest('td');
+      var jobId = (form.querySelector('input[name=job_id]') || {}).value || '';
+      var body = new FormData(form);
+      appendLlms(body);
+      runResumeAction(resumeCell, form.action, body, 'regenerating from JSON + re-scoring…', { jobId: jobId });
+    }
+
+    // "✎ With LLM": full AI rewrite using the LLMs chosen at the top of the page.
+    function rewriteSubmit(e) {
+      e.preventDefault();
+      var form = e.currentTarget;
+      var resumeCell = form.closest('td');
+      var jobId = (form.querySelector('input[name=job_id]') || {}).value || '';
+      var body = new FormData(form);
+      appendLlms(body);
+      runResumeAction(resumeCell, form.action, body, 'rewriting with LLM… this can take a few minutes', { jobId: jobId });
+    }
+
+    // Attach handlers to any regen/rewrite forms + History buttons present on page load
+    document.querySelectorAll('.regen-form').forEach(function (f) { f.addEventListener('submit', regenSubmit); });
+    document.querySelectorAll('.rewrite-form').forEach(function (f) { f.addEventListener('submit', rewriteSubmit); });
+    document.querySelectorAll('.versions-btn').forEach(function (b) { b.addEventListener('click', function () { openVersions(b); }); });
+
+    // ── Résumé version history (🕑 History) ───────────────────────────────
+    // Every regenerate archives the current résumé first (backend: resume_versions). This
+    // modal lists those snapshots newest-first and lets you preview, download, or restore one.
+    var versionsState = { jobId: '', company: '', role: '' };
+    var versionsModal = document.getElementById('versions-modal');
+    function openVersions(btn) {
+      versionsState = { jobId: btn.dataset.jobId || '', company: btn.dataset.company || '',
+                        role: btn.dataset.role || '' };
+      document.getElementById('versions-sub').textContent =
+        versionsState.company + ' — ' + versionsState.role;
+      var list = document.getElementById('versions-list');
+      list.innerHTML = '<div class="ver-empty">Loading…</div>';
+      versionsModal.classList.add('show');
+      fetch('/resume-versions?job_id=' + encodeURIComponent(versionsState.jobId))
+        .then(function (r) { return r.json(); })
+        .then(function (data) { renderVersions((data && data.versions) || []); })
+        .catch(function () { list.innerHTML = '<div class="ver-empty">Could not load history.</div>'; });
+    }
+    function renderVersions(versions) {
+      var list = document.getElementById('versions-list');
+      list.innerHTML = '';
+      if (!versions.length) {
+        list.innerHTML = '<div class="ver-empty">No previous versions saved yet. The next time you ' +
+          'regenerate this résumé, its current version will be saved here first.</div>';
+        return;
+      }
+      versions.forEach(function (v) {
+        var row = document.createElement('div');
+        row.className = 'ver-row';
+        var main = document.createElement('div');
+        main.className = 'ver-main';
+        var title = document.createElement('div');
+        title.className = 'ver-title';
+        title.textContent = (v.is_current ? 'Current version' : 'Version ' + v.version) +
+          (v.match_score != null ? '  ·  Match ' + v.match_score + '/10' : '');
+        var meta = document.createElement('div');
+        meta.className = 'ver-meta';
+        var bits = [];
+        if (v.created_at) bits.push('Saved ' + v.created_at);
+        if (v.note && !v.is_current) bits.push(v.note);
+        if (v.llms) bits.push('LLM: ' + v.llms);
+        else if (v.is_current) bits.push('LLM: unknown');
+        meta.textContent = bits.join('  ·  ');
+        main.appendChild(title); main.appendChild(meta);
+        var actions = document.createElement('div');
+        actions.className = 'ver-actions';
+        if (v.html) {
+          var prev = document.createElement('a');
+          prev.className = 'apply-btn'; prev.href = fileUrl(v.html); prev.target = '_blank';
+          prev.textContent = 'Preview'; actions.appendChild(prev);
+        }
+        if (v.pdf) {
+          var dl = document.createElement('a');
+          dl.className = 'apply-btn'; dl.href = fileUrl(v.pdf) + '?download=1';
+          dl.textContent = 'PDF ↓'; actions.appendChild(dl);
+        }
+        if (v.can_restore) {
+          var rb = document.createElement('button');
+          rb.type = 'button'; rb.className = 'apply-btn';
+          rb.textContent = 'Restore';
+          rb.title = 'Make this version current (your current one is saved to history first)';
+          rb.addEventListener('click', function () { restoreVersion(v.version, rb); });
+          actions.appendChild(rb);
+        }
+        row.appendChild(main); row.appendChild(actions);
+        list.appendChild(row);
+      });
+    }
+    function restoreVersion(version, btn) {
+      if (!confirm('Restore version ' + version + '? Your current résumé is saved to history ' +
+                   'first, then replaced with this version.')) return;
+      btn.disabled = true; btn.textContent = 'Restoring…';
+      var body = new URLSearchParams({ job_id: versionsState.jobId, version: String(version) });
+      fetch('/restore-resume-version', { method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data.ok) {
+            btn.disabled = false; btn.textContent = 'Restore';
+            showFlash(data.message || 'Could not restore.', 'error');
+            return;
+          }
+          // Reload so the row's Match score/tooltip reflect the restored version; the message
+          // survives the reload via the same sessionStorage flash the manual actions use.
+          try {
+            sessionStorage.setItem('manualFlash',
+              JSON.stringify({ message: data.message, category: data.category || 'success' }));
+          } catch (e) {}
+          location.reload();
+        })
+        .catch(function () {
+          btn.disabled = false; btn.textContent = 'Restore';
+          showFlash('Could not restore that version.', 'error');
+        });
+    }
+    function closeVersions() { versionsModal.classList.remove('show'); }
+    document.getElementById('versions-close').addEventListener('click', closeVersions);
+    versionsModal.addEventListener('click', function (e) { if (e.target === versionsModal) closeVersions(); });
+
+    // ── Resume-enhancement chat ───────────────────────────────────────────
+    var chatState = { jobId: '', company: '', role: '', messages: [], busy: false };
+    function chatBubble(role, text, thinking) {
+      var box = document.getElementById('chat-messages');
+      var div = document.createElement('div');
+      div.className = 'chat-bubble ' + role + (thinking ? ' thinking' : '');
+      if (thinking) div.innerHTML = '<span class="inline-spinner"></span>thinking…';
+      else div.textContent = text;
+      box.appendChild(div); box.scrollTop = box.scrollHeight;
+    }
+    function chatNote(text) {
+      var box = document.getElementById('chat-messages');
+      var d = document.createElement('div'); d.className = 'chat-note'; d.textContent = text;
+      box.appendChild(d); box.scrollTop = box.scrollHeight;
+    }
+    function chatThinkingRemove() { var t = document.querySelector('.chat-bubble.thinking'); if (t) t.remove(); }
+    function callChat() {
+      if (chatState.busy) return;
+      chatState.busy = true;
+      chatBubble('assistant', '', true);
+      fetch('/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ job_id: chatState.jobId, messages: chatState.messages,
+                               llm: (document.getElementById('llm-chat') || {}).value || 'claude' }) })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          chatThinkingRemove(); chatState.busy = false;
+          var reply = data.reply || '(no reply)';
+          chatState.messages.push({ role: 'assistant', content: reply });
+          chatBubble('assistant', reply);
+          if (data.addition) chatNote('✓ Saved to ' + (data.where || 'your base resume') + ': ' + data.addition);
+        })
+        .catch(function (e) { chatThinkingRemove(); chatState.busy = false; chatBubble('assistant', 'Chat error: ' + e); });
+    }
+    function openChat(btn) {
+      chatState = { jobId: btn.dataset.jobId, company: btn.dataset.company, role: btn.dataset.role, messages: [], busy: false };
+      document.getElementById('chat-title').textContent = 'Improve match — ' + chatState.company;
+      document.getElementById('chat-sub').textContent = chatState.role;
+      document.getElementById('chat-messages').innerHTML = '';
+      document.getElementById('chat-modal').classList.add('show');
+      document.getElementById('chat-input').focus();
+      callChat();  // opening turn: assistant lists the gaps
+    }
+    function sendChat() {
+      var inp = document.getElementById('chat-input');
+      var text = inp.value.trim();
+      if (!text || chatState.busy) return;
+      chatState.messages.push({ role: 'user', content: text });
+      chatBubble('user', text);
+      inp.value = '';
+      callChat();
+    }
+    function attachChat(btn) { btn.addEventListener('click', function () { openChat(btn); }); }
+    document.querySelectorAll('.chat-btn').forEach(attachChat);
+    document.getElementById('chat-send').addEventListener('click', sendChat);
+    document.getElementById('chat-input').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+    });
+    document.getElementById('chat-close').addEventListener('click', function () {
+      document.getElementById('chat-modal').classList.remove('show');
+    });
+    document.getElementById('chat-modal').addEventListener('click', function (e) {
+      if (e.target === this) this.classList.remove('show');  // click backdrop to close
+    });
+
+    // Which tab, search, sort and page are showing is decided by the SERVER and encoded
+    // in the URL — the table only ever receives the rows it displays. Tabs, sort headers
+    // and the pager are plain links; the company filter is a GET form. The browser-side
+    // filtering that used to live here (rowMatchesTab / applyRowFilters / sortTable /
+    // updateTabCounts) is gone with the all-rows render that required it.
+    // Manual "Add job": a quick, non-blocking POST that just files the job in the list (no
+    // résumé is generated here — that's done later from the list). On success we reload so
+    // the new tracked row appears, carrying the result message across the reload.
+    var manualForm = document.getElementById('manualform');
+    if (manualForm) manualForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var btn = document.getElementById('manualbtn');
+      var status = document.getElementById('manual-status');
+      btn.disabled = true;
+      if (status) status.innerHTML = '<span class="inline-spinner"></span><span class="genjob-status">Adding…</span>';
+      var body = new FormData(manualForm);
+      body.append('ajax', '1');
+      fetch(manualForm.action, { method: 'POST', body: body })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.ok) {
+            try {
+              sessionStorage.setItem('manualFlash', JSON.stringify({ message: data.message, category: data.category }));
+            } catch (err) {}
+            // Land on the Manual tab so the new job — at the top of it — is right there.
+            window.location.href = '{{ url_for("index", tab="manual") }}';
+          } else {
+            btn.disabled = false;
+            if (status) status.textContent = '';
+            showFlash(data.message, data.category || 'error');
+          }
+        })
+        .catch(function (err) {
+          btn.disabled = false;
+          if (status) status.textContent = '';
+          showFlash('Could not add the job: ' + err, 'error');
+        });
+    });
+    // Re-display a manual-add result after the post-success reload.
+    try {
+      var mf = sessionStorage.getItem('manualFlash');
+      if (mf) { sessionStorage.removeItem('manualFlash'); var p = JSON.parse(mf); showFlash(p.message, p.category); }
+    } catch (err) {}
+    // Job selection only makes sense on "To Apply"; every other tab starts with none.
+    updateSelectionUI();
+
+    // Tools → Settings: pick the AI Fit threshold for the "Under Qualified" tab.
+    var uqModal = document.getElementById('uq-settings-modal');
+    var uqInput = document.getElementById('uq-threshold');
+    function openUqSettings() {
+      uqInput.value = {{ view.threshold | tojson }};
+      uqModal.classList.add('show');
+      uqInput.focus();
+    }
+    function closeUqSettings() { uqModal.classList.remove('show'); }
+    // Saving posts to the server: the threshold decides which tab a job is IN, and that
+    // split now happens in SQL, so the page has to be re-rendered with the new value.
+    function saveUqSettings() {
+      var v = parseInt(uqInput.value, 10);
+      if (isNaN(v) || v < 1 || v > 10) { showFlash('Enter a whole number from 1 to 10.', 'error'); return; }
+      document.getElementById('uq-value').value = v;
+      document.getElementById('uq-form').submit();
+    }
+    document.getElementById('uq-settings-btn').addEventListener('click', openUqSettings);
+    document.getElementById('uq-close').addEventListener('click', closeUqSettings);
+    document.getElementById('uq-cancel').addEventListener('click', closeUqSettings);
+    document.getElementById('uq-save').addEventListener('click', saveUqSettings);
+    uqModal.addEventListener('click', function (e) { if (e.target === uqModal) closeUqSettings(); });
+
+    // Per-row delete (To Apply tab only): removes the job row AND its generated resume files,
+    // then updates the summary counts in place (no full reload).
+    function bumpCount(id, delta) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var n = parseInt(el.textContent, 10);
+      if (!isNaN(n)) el.textContent = n + delta;
+    }
+    function deleteRow(btn) {
+      if (!confirm('Delete this job and its generated resume? This cannot be undone.')) return;
+      var tr = btn.closest('tr');
+      btn.disabled = true;
+      var body = new FormData();
+      body.append('job_id', btn.dataset.jobId);
+      fetch('{{ url_for("delete_job_route") }}', { method: 'POST', body: body })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data.ok) { btn.disabled = false; showFlash(data.message || 'Could not delete.', 'error'); return; }
+          bumpCount('stat-total', -1);
+          bumpCount(tr.dataset.hasResume === '1' ? 'stat-resume-made' : 'stat-no-resume', -1);
+          bumpCount('count-' + activeTab, -1);   // the badge for the tab it was showing in
+          tr.remove();
+          updateSelectionUI();            // it may have been a ticked row
+          showFlash(data.message, 'success');
+        })
+        .catch(function (err) { btn.disabled = false; showFlash('Delete failed: ' + err, 'error'); });
+    }
+    document.querySelectorAll('.delete-btn').forEach(function (b) {
+      b.addEventListener('click', function () { deleteRow(b); });
+    });
+
+    // ── Batch scheduling ──────────────────────────────────────────────────────
+    // Tick jobs that still need a resume, then schedule a run that generates them all
+    // at a chosen Eastern-Time moment with a chosen LLM. The in-app scheduler thread
+    // (see src/scheduler.py) fires the run while the app is running.
+    function selectedBoxes() {
+      // Every rendered row belongs to the current tab and page, so a ticked box counts.
+      return Array.prototype.slice.call(document.querySelectorAll('.row-select:checked'));
+    }
+    function clearSelection() {
+      document.querySelectorAll('.row-select').forEach(function (cb) { cb.checked = false; });
+      var sa = document.getElementById('select-all'); if (sa) sa.checked = false;
+    }
+    function updateSelectionUI() {
+      var n = selectedBoxes().length;
+      var cnt = document.getElementById('sel-count');
+      var btn = document.getElementById('schedule-btn');
+      if (cnt) cnt.textContent = n;
+      if (btn) btn.disabled = n === 0;
+    }
+    document.querySelectorAll('.row-select').forEach(function (cb) {
+      cb.addEventListener('change', updateSelectionUI);
+    });
+    var selectAll = document.getElementById('select-all');
+    if (selectAll) selectAll.addEventListener('change', function () {
+      document.querySelectorAll('.row-select').forEach(function (cb) {
+        var tr = cb.closest('tr');
+        cb.checked = selectAll.checked;
+      });
+      updateSelectionUI();
+    });
+
+    // Eastern-Time "now + hours", formatted for a <input type=datetime-local> value.
+    function etDatetimeLocal(plusHours) {
+      var d = new Date(Date.now() + (plusHours || 0) * 3600 * 1000);
+      var parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', hour12: false }).formatToParts(d);
+      var m = {}; parts.forEach(function (p) { m[p.type] = p.value; });
+      var hh = (m.hour === '24') ? '00' : m.hour;   // Intl can emit 24; datetime-local wants 00
+      return m.year + '-' + m.month + '-' + m.day + 'T' + hh + ':' + m.minute;
+    }
+    var schedModal = document.getElementById('schedule-modal');
+    function openSchedule() {
+      var boxes = selectedBoxes();
+      if (!boxes.length) return;
+      var list = document.getElementById('sched-joblist');
+      list.innerHTML = '';
+      boxes.forEach(function (cb) {
+        var d = document.createElement('div'); d.className = 'j';
+        d.textContent = '• ' + cb.dataset.company + ' — ' + cb.dataset.role;
+        list.appendChild(d);
+      });
+      document.getElementById('sched-sub').textContent =
+        boxes.length + ' job' + (boxes.length === 1 ? '' : 's') + ' selected';
+      document.getElementById('sched-when').value = etDatetimeLocal(1);  // default: 1h from now
+      schedModal.classList.add('show');
+    }
+    function closeSchedule() { schedModal.classList.remove('show'); }
+    document.getElementById('schedule-btn').addEventListener('click', openSchedule);
+    document.getElementById('sched-close').addEventListener('click', closeSchedule);
+    document.getElementById('sched-cancel').addEventListener('click', closeSchedule);
+    schedModal.addEventListener('click', function (e) { if (e.target === this) closeSchedule(); });
+
+    document.getElementById('sched-submit').addEventListener('click', function () {
+      var boxes = selectedBoxes();
+      var when = document.getElementById('sched-when').value;
+      if (!boxes.length) { showFlash('No jobs selected.', 'error'); return; }
+      if (!when) { showFlash('Pick a date and time.', 'error'); return; }
+      var btn = this; btn.disabled = true;
+      var body = new FormData();
+      body.append('fire_at', when);
+      appendLlms(body);
+      boxes.forEach(function (cb) { body.append('job_ids', cb.dataset.jobId); });
+      fetch('/schedule-run', { method: 'POST', body: body })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          btn.disabled = false;
+          if (data.ok) {
+            closeSchedule();
+            clearSelection();
+            updateSelectionUI();
+            showFlash(data.message, 'success');
+            loadScheduledRuns();
+          } else {
+            showFlash(data.message || 'Could not schedule.', 'error');
+          }
+        })
+        .catch(function (err) { btn.disabled = false; showFlash('Schedule failed: ' + err, 'error'); });
+    });
+
+    // ── Scheduled-runs panel ──────────────────────────────────────────────────
+    var runsPoll = null;
+    var JOB_STATUS_LABEL = { pending: 'queued', generating: 'generating…', done: '✓ done',
+      error: '✗ failed', skipped: 'skipped', closed: '✗ no longer active' };
+    function jobLine(run, j) {
+      var label = JOB_STATUS_LABEL[j.status] || j.status;
+      var score = (j.status === 'done' && j.match_score != null) ? ' (' + j.match_score + '/10)' : '';
+      // A pending run is still editable → each job gets an ✕ to drop it from the run.
+      var rm = run.status === 'pending'
+        ? '<button class="run-jobrm" data-run-id="' + run.id + '" data-job-id="' +
+            escapeAttr(j.job_id) + '" title="Remove from this run">✕</button>'
+        : '';
+      return '<div class="run-job">' + rm +
+        '<span class="jstatus ' + j.status + '">' + label + '</span> · ' +
+        escapeAttr(j.company) + ' — ' + escapeAttr(j.role) + score + '</div>';
+    }
+    function llmLabel(v) {
+      var fixed = { claude: 'Claude', local: 'Local LLM', chatgpt: 'ChatGPT', off: 'off',
+                    local_qwen: 'Local — qwen3.6', local_gptoss: 'Local — gpt-oss', local_mistral: 'Local — mistral-small' };
+      if (v && v.indexOf('local:') === 0) return 'Local — ' + v.slice(6);
+      return fixed[v] || v || '';
+    }
+    // A short label for a run's backend selection: newer runs store a per-stage `llms` dict,
+    // older ones a single `llm` string. Collapse to one label when every stage agrees.
+    function runLlmLabel(run) {
+      if (run.llms && typeof run.llms === 'object') {
+        var used = [];
+        Object.keys(run.llms).forEach(function (k) {
+          var v = run.llms[k];
+          if (v !== 'off' && used.indexOf(v) === -1) used.push(v);
+        });
+        if (used.length === 1) return llmLabel(used[0]);
+        return 'per-stage LLMs';
+      }
+      return llmLabel(run.llm) || 'Claude';
+    }
+    function runCard(run) {
+      var jobs = (run.jobs || []).map(function (j) { return jobLine(run, j); }).join('');
+      var llm = runLlmLabel(run);
+      var action = '';
+      if (run.status === 'pending') {
+        action = '<button class="apply-btn run-addsel" data-run-id="' + run.id +
+            '" title="Add the jobs you have ticked in the table to this run">➕ Add selected</button>' +
+          '<button class="apply-btn run-cancel" data-run-id="' + run.id + '">Cancel</button>';
+      } else if (run.status === 'done' || run.status === 'cancelled') {
+        action = '<button class="apply-btn run-remove" data-run-id="' + run.id + '">Clear</button>';
+      }
+      return '<div class="run-card">' +
+        '<div class="run-head">' +
+          '<span class="run-badge ' + run.status + '">' + run.status + '</span>' +
+          '<span class="run-when">' + escapeAttr(run.fire_at.replace('T', ' ')) + ' ET</span>' +
+          '<span class="run-meta">· ' + (run.jobs || []).length + ' job(s) · ' + llm + '</span>' +
+          '<span class="run-actions">' + action + '</span>' +
+        '</div>' +
+        '<div class="run-jobs">' + jobs + '</div>' +
+      '</div>';
+    }
+    // Stamp the matching MAIN-table rows with a ⏳ Queued / Generating badge so you can see,
+    // in the table itself, which jobs belong to an upcoming/active scheduled run.
+    function annotateQueuedRows(runs) {
+      document.querySelectorAll('.queued-badge').forEach(function (b) { b.remove(); });
+      document.querySelectorAll('tr.is-queued').forEach(function (r) { r.classList.remove('is-queued'); });
+      var byJob = {};
+      (runs || []).forEach(function (run) {
+        if (run.status !== 'pending' && run.status !== 'running') return;
+        (run.jobs || []).forEach(function (j) {
+          if (j.status === 'pending' || j.status === 'generating') byJob[j.job_id] = j.status;
+        });
+      });
+      Object.keys(byJob).forEach(function (jid) {
+        var row = document.querySelector('tr[data-job-id="' + (window.CSS && CSS.escape ? CSS.escape(jid) : jid) + '"]');
+        if (!row) return;
+        var prog = row.querySelector('.status-cell .progress');
+        if (!prog) return;
+        var st = byJob[jid];
+        var badge = document.createElement('span');
+        badge.className = 'queued-badge ' + st;
+        badge.textContent = st === 'generating' ? '⏳ Generating…' : '⏳ Queued';
+        prog.appendChild(badge);
+        row.classList.add('is-queued');
+      });
+    }
+    function renderRuns(runs, keepAwake) {
+      var panel = document.getElementById('runs-panel');
+      annotateQueuedRows(runs);                         // keep the main-table badges in sync
+      if (!runs || !runs.length) {
+        // Keep an empty-state message (visible when the user opens "View runs" with no history).
+        panel.innerHTML = '<h2 style="margin:0 0 10px;">Scheduled runs</h2>' +
+          '<p class="sub" style="margin:0;">No scheduled runs yet. Tick jobs on the To Apply tab and use “📅 Schedule selected…”.</p>';
+        return false;
+      }
+      var awake = keepAwake ? '<div class="awake-note">🔆 Keeping your Mac awake until these ' +
+        'runs finish. Leave the app running and the lid open (closing the lid still sleeps it).</div>' : '';
+      panel.innerHTML = '<h2 style="margin:0 0 10px;">Scheduled runs</h2>' + awake + runs.map(runCard).join('');
+      panel.querySelectorAll('.run-cancel').forEach(function (b) {
+        b.addEventListener('click', function () { runAction(b.dataset.runId, 'cancel'); });
+      });
+      panel.querySelectorAll('.run-remove').forEach(function (b) {
+        b.addEventListener('click', function () { runAction(b.dataset.runId, 'delete'); });
+      });
+      panel.querySelectorAll('.run-jobrm').forEach(function (b) {
+        b.addEventListener('click', function () { removeJobFromRun(b.dataset.runId, b.dataset.jobId); });
+      });
+      panel.querySelectorAll('.run-addsel').forEach(function (b) {
+        b.addEventListener('click', function () { addSelectedToRun(b.dataset.runId); });
+      });
+      // Keep polling while anything is still pending or running.
+      return runs.some(function (r) { return r.status === 'pending' || r.status === 'running'; });
+    }
+    function loadScheduledRuns() {
+      fetch('/scheduled-runs').then(function (r) { return r.json(); }).then(function (data) {
+        var active = renderRuns(data.runs || [], data.keep_awake);
+        if (active && !runsPoll) runsPoll = setInterval(loadScheduledRuns, 10000);
+        if (!active && runsPoll) { clearInterval(runsPoll); runsPoll = null; }
+      }).catch(function () {});
+    }
+    // "View runs" toggles the runs list (all past + upcoming scheduled runs). The list is
+    // hidden by default; progress on active runs is still visible via the ⏳ badges on the
+    // table rows (annotateQueuedRows), which run regardless of this panel's visibility.
+    var viewRunsBtn = document.getElementById('view-runs-btn');
+    if (viewRunsBtn) viewRunsBtn.addEventListener('click', function () {
+      var panel = document.getElementById('runs-panel');
+      if (panel.style.display === 'none') {
+        panel.style.display = '';
+        viewRunsBtn.textContent = 'Hide runs';
+        loadScheduledRuns();                            // refresh the list as it's opened
+      } else {
+        panel.style.display = 'none';
+        viewRunsBtn.textContent = 'View runs';
+      }
+    });
+    // Edit a pending run's job list before it fires.
+    function removeJobFromRun(runId, jobId) {
+      var body = new FormData();
+      body.append('run_id', runId); body.append('action', 'remove'); body.append('job_id', jobId);
+      fetch('/update-scheduled-run', { method: 'POST', body: body })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          showFlash(data.message, data.ok ? 'success' : 'error');
+          loadScheduledRuns();
+        })
+        .catch(function (err) { showFlash('Update failed: ' + err, 'error'); });
+    }
+    function addSelectedToRun(runId) {
+      var boxes = selectedBoxes();
+      if (!boxes.length) { showFlash('Tick jobs in the table first, then click “Add selected”.', 'error'); return; }
+      var body = new FormData();
+      body.append('run_id', runId); body.append('action', 'add');
+      boxes.forEach(function (cb) { body.append('job_ids', cb.dataset.jobId); });
+      fetch('/update-scheduled-run', { method: 'POST', body: body })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.ok) { clearSelection(); updateSelectionUI(); }
+          showFlash(data.message, data.ok ? 'success' : 'error');
+          loadScheduledRuns();
+        })
+        .catch(function (err) { showFlash('Add failed: ' + err, 'error'); });
+    }
+    function runAction(runId, action) {
+      if (action === 'cancel' && !confirm('Cancel this scheduled run?')) return;
+      var body = new FormData();
+      body.append('run_id', runId);
+      body.append('action', action);
+      fetch('/cancel-scheduled-run', { method: 'POST', body: body })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (!data.ok) showFlash(data.message || 'Action failed.', 'error');
+          loadScheduledRuns();
+        })
+        .catch(function (err) { showFlash('Action failed: ' + err, 'error'); });
+    }
+    loadScheduledRuns();
+  </script>
+</body>
+</html>
