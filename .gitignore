@@ -35,3 +35,6 @@ build/
 .DS_Store
 # Owner filter snapshot for the one-time v8 per-user migration (machine-local, never committed)
 data/user1_filter_seed.json
+
+# Claude Code per-machine permissions (may contain local paths)
+.claude/settings.local.json
