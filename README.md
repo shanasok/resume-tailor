@@ -28,6 +28,58 @@ AI models. You can choose which AI runs each step.
 
 ---
 
+## A quick tour
+
+### The home page: find jobs, generate résumés, track it all
+
+Everything happens on one page. Pick which AI runs each step, tick the job boards to
+search, and press **Retrieve Jobs**. While the scan runs, matching jobs appear in the
+live feed with a first AI Fit score against your base résumé, so you don't have to
+wait for the full scan to finish. Below that, every tracked job has its own row. From
+there you can open the posting, generate a tailored résumé, see its match score, chat
+with the AI to adjust it, compare it with your base résumé, browse older versions, and
+mark it as applied. LinkedIn connections at each company are shown too.
+
+![Home page showing the AI model choices, job board selection, a live scan feed, and the tracked jobs table](docs/images/job-retrieval-view.png)
+
+### Filter settings: say what you're looking for in plain words
+
+Each job goes through two checks before it reaches your list. The title check accepts
+titles that contain your keywords. It also accepts titles that are close in *meaning*
+to a short description of your ideal roles, so a good title with none of your keywords
+still gets through. The posting check then reads the full posting and applies your
+rules on location, pay, and how recently it was posted.
+
+![Filter settings page with a plain-English description of ideal roles, a meaning-match strictness setting, and keyword lists](docs/images/filter-settings.png)
+
+### Under Qualified: keep the list focused
+
+Choose an AI Fit score, and jobs at or below it move to their own **Under Qualified**
+tab instead of crowding your **To Apply** list. Nothing is deleted, so you can still
+look at them.
+
+![Under Qualified settings dialog with an AI Fit threshold of 5](docs/images/under-qualified-settings.png)
+
+### Résumé history: nothing is ever lost
+
+Every time a résumé is regenerated, the previous version is saved. You can preview or
+download any older version, or restore it. Restoring saves the current version to
+history first, so you can always undo. Each version also records its match score and
+which AI handled each step.
+
+![Résumé history dialog showing the current version with its match score and the AI used at each step](docs/images/resume-history.png)
+
+### Local AI health checks: run it with free, open-source models
+
+Every AI step can run on open-source models hosted on your own machine with Ollama
+instead of paid services. This page checks that the local model server is running,
+lists the models it has, and lets you send a test message before you rely on it for a
+real résumé.
+
+![Local LLM health checks page with tests for listing models, running models, and sending a chat message](docs/images/llm-health-checks-open-source.png)
+
+---
+
 ## About this README
 
 The app takes your resume and a job posting, and generates a new resume tailored to
