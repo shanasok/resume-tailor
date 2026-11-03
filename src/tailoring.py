@@ -10,10 +10,11 @@ import subprocess                                    # run the external `claude`
 
 import requests                                      # HTTP requests (used for the local LLM backend)
 
-# Local LLM backend (Ollama on your network). Set this to the bare server root — no /v1
-# suffix; the endpoint path (/api/chat) is appended in code. Overridable via env.
+# Local LLM backend (Ollama). Set this to the bare server root — no /v1 suffix; the
+# endpoint path (/api/chat) is appended in code. Defaults to Ollama on this machine; point
+# LOCAL_LLM_URL in .env at another host to use a server elsewhere on your network.
 # os.environ.get("X", default) reads env var X, or uses the default if it isn't set.
-LOCAL_LLM_URL = os.environ.get("LOCAL_LLM_URL", "http://100.108.61.107:11434")
+LOCAL_LLM_URL = os.environ.get("LOCAL_LLM_URL", "http://localhost:11434")
 
 # Read-only back-compat: the three pre-discovery nicknames still resolve so already-saved
 # selections (one user's localStorage) and old résumé rows (DB <stage>_llm columns) keep

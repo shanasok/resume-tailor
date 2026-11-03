@@ -29,7 +29,7 @@ Prompts are built by concatenating attacker-controllable content — pasted job 
 - [ ] **P2** Output moderation / content-policy checks.
 
 ## 3. SSRF — standout risk given the private network ⚠️
-`job_url` is fetched **server-side** (`job_parser._fetch_url`), and headless Chromium renders HTML that can reference external/`file://` resources. An attacker can target `169.254.169.254` (cloud metadata), `localhost`, or the **internal Tailscale LLM (`100.108.61.107:11434`)**.
+`job_url` is fetched **server-side** (`job_parser._fetch_url`), and headless Chromium renders HTML that can reference external/`file://` resources. An attacker can target `169.254.169.254` (cloud metadata), `localhost`, or the **internal network LLM host (`LOCAL_LLM_URL`)**.
 
 - [x] **P0** Allowlist schemes to `http`/`https` only. *(`job_parser._assert_public_url`)*
 - [x] **P0** Resolve DNS and block private/loopback/link-local/CGNAT(Tailscale) ranges; re-check after redirects. *(`_is_blocked_ip`, `_safe_get`)*
