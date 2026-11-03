@@ -21,7 +21,7 @@ source .venv/bin/activate
 python app.py     # then open http://127.0.0.1:5001 (5000 is taken by macOS AirPlay)
 ```
 Form takes company, role, and a job URL or pasted text; shows application history with preview/download links.
-Tests: `.venv/bin/python -m pytest tests/ -v` (447 tests; the DB-backed ones skip unless the docker db is up — they use a throwaway `resume_handler_test` database, never the real one; the pgvector tests additionally skip if the db image lacks the `vector` extension)
+Tests: `.venv/bin/python -m pytest tests/ -v` (448 tests; the DB-backed ones skip unless the docker db is up — they use a throwaway `resume_handler_test` database, never the real one; the pgvector tests additionally skip if the db image lacks the `vector` extension)
 
 **CLI:**
 ```bash

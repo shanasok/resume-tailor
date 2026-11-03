@@ -906,6 +906,15 @@ def _lock_experience(tailored_exp: list, base_exp: list) -> list:
         candidates = [i for i, b in enumerate(base_exp)
                       if not consumed[i] and _norm_company(b.get("company")) == co and co]
         if not candidates:
+            # The model sometimes SWAPS company and title (common with "Self-employed", which
+            # reads like a title). Match the swapped pair so the role locks to its real facts
+            # instead of being kept as unknown AND restored again — the same job twice.
+            ti = _norm_company(tailored_role.get("title"))
+            candidates = [i for i, b in enumerate(base_exp)
+                          if not consumed[i] and co and ti
+                          and _norm_company(b.get("company")) == ti
+                          and _norm_company(b.get("title")) == co]
+        if not candidates:
             return None, None
         # Best title/date match wins; ties fall back to base order (min index) — deterministic
         # and never drops a role.

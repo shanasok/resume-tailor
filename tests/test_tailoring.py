@@ -321,6 +321,34 @@ def test_lock_facts_preserves_model_role_ordering():
     assert [r["company"] for r in locked["experience"]] == ["Globex LLC", "Acme Corp"]
 
 
+def test_lock_facts_fixes_swapped_company_and_title_instead_of_duplicating_role():
+    # A "Self-employed" role tempts the model to swap the fields: it wrote the title as the
+    # company and "Self-employed" as the title. That must lock onto the real base role (facts
+    # corrected, tailored bullets kept) — not be kept as an unknown role while the base role is
+    # appended again at the bottom, which printed the same job twice.
+    base = _base_profile()
+    base["experience"].insert(0, {"company": "Self-employed", "title": "Independent Consultant",
+                                  "dates": "2024 - Present", "bullets": ["Base consulting bullet"]})
+    tailored = {
+        "name": "Jordan Rivera", "contact": {},
+        "experience": [
+            {"company": "Independent Consultant", "title": "Self-employed",
+             "dates": "2024 – Present", "bullets": ["Tailored consulting bullet"]},
+            {"company": "Acme Corp", "title": "x", "dates": "y", "bullets": ["ab"]},
+            {"company": "Globex LLC", "title": "x", "dates": "y", "bullets": ["gb"]},
+        ],
+        "skills": [], "education": [], "certifications": [],
+    }
+    locked = tailoring._lock_facts(tailored, base)
+
+    assert [r["company"] for r in locked["experience"]] == \
+        ["Self-employed", "Acme Corp", "Globex LLC"]          # once, in the model's order
+    consulting = locked["experience"][0]
+    assert consulting["title"] == "Independent Consultant"
+    assert consulting["dates"] == "2024 - Present"
+    assert consulting["bullets"] == ["Tailored consulting bullet"]
+
+
 def test_lock_facts_restores_role_the_model_dropped_with_base_bullets():
     # The model dropped Globex entirely — it must be restored (no real job vanishes).
     tailored = {
